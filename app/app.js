@@ -244,7 +244,8 @@
           "<td>" + (d.sipMode === "manual"
             ? '<input class="cell-input small" type="number" step="0.1" data-type="class" data-id="' + ac.id + '" data-field="manualSipPct" value="' + numOr0(ac.manualSipPct) + '" onclick="event.stopPropagation()"> % → ' + fmtINR(ac.sipAmount)
             : fmtPct(ac.sipAllocPct) + " → " + fmtINR(ac.sipAmount)) + "</td>" +
-          '<td><button class="icon-btn" data-action="delete-class" data-id="' + ac.id + '" title="Delete asset class">✕</button></td>' +
+          '<td><button class="icon-btn move-btn" data-action="move-class-to-other" data-id="' + ac.id + '" title="Move to Other Assets">⇄</button>' +
+            '<button class="icon-btn" data-action="delete-class" data-id="' + ac.id + '" title="Delete asset class">✕</button></td>' +
         "</tr>"
       );
       if (isOpen) {
@@ -326,7 +327,8 @@
             '<td class="left"><input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '"></td>' +
             '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '"></td>' +
             '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '"></td>' +
-            '<td><button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button></td>' +
+            '<td><button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
+              '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button></td>' +
           "</tr>"
         );
         return;
@@ -340,7 +342,8 @@
           "</div></td>" +
           "<td>" + fmtINR(o.currentValue) + "</td>" +
           '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '" onclick="event.stopPropagation()"></td>' +
-          '<td><button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete section (and its items)">✕</button></td>' +
+          '<td><button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
+            '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete section (and its items)">✕</button></td>' +
         "</tr>"
       );
 
@@ -1131,6 +1134,71 @@
           if (!ok) return;
           state.otherAssets = state.otherAssets.filter((o) => o.id !== actionEl.dataset.id);
           persist(); renderAll();
+          return;
+        }
+        if (action === "move-class-to-other") {
+          const ac = findClass(actionEl.dataset.id);
+          if (!ac) return;
+          const ok = await confirmDialog(
+            "Move to Other Assets?",
+            "\"" + ac.name + "\" will become an Other Assets subsection. Its Target % and per-holding SIP % settings will be lost — Other Assets items don't have those.",
+            "Move", "Cancel", false
+          );
+          if (!ok) return;
+          state.assetClasses = state.assetClasses.filter((a) => a.id !== ac.id);
+          const newGroup = {
+            id: uid("o"), name: ac.name, monthlyContribution: 0,
+            holdings: ac.holdings.map((h) => ({ id: uid("oh"), name: h.name, currentValue: h.currentValue, isin: h.isin || null }))
+          };
+          state.otherAssets.push(newGroup);
+          expanded.delete(ac.id);
+          expanded.add(newGroup.id);
+          persist(); renderAll();
+          toast("Moved \"" + ac.name + "\" to Other Assets.");
+          return;
+        }
+        if (action === "move-other-to-class") {
+          const o = findOther(actionEl.dataset.id);
+          if (!o) return;
+          const isGroup = Array.isArray(o.holdings);
+          const ok = await confirmDialog(
+            "Move to Asset Allocation?",
+            "\"" + o.name + "\" will become an Asset Allocation class" + (isGroup ? "" : " with one holding matching its current value") + ", with Target % starting at 0% — set it afterward.",
+            "Move", "Cancel", false
+          );
+          if (!ok) return;
+          state.otherAssets = state.otherAssets.filter((x) => x.id !== o.id);
+          const newClass = {
+            id: uid("ac"), name: o.name, targetPct: 0, manualSipPct: 0,
+            holdings: isGroup
+              ? o.holdings.map((h) => ({ id: uid("h"), name: h.name, currentValue: h.currentValue, sipPct: 0, isin: h.isin || null }))
+              : [{ id: uid("h"), name: o.name, currentValue: o.currentValue, sipPct: 100, isin: null }]
+          };
+          state.assetClasses.push(newClass);
+          expanded.delete(o.id);
+          expanded.add(newClass.id);
+          persist(); renderAll();
+          toast("Moved \"" + o.name + "\" to Asset Allocation — set its Target %.");
+          return;
+        }
+        if (action === "expand-all-classes") {
+          state.assetClasses.forEach((ac) => expanded.add(ac.id));
+          renderAll();
+          return;
+        }
+        if (action === "collapse-all-classes") {
+          state.assetClasses.forEach((ac) => expanded.delete(ac.id));
+          renderAll();
+          return;
+        }
+        if (action === "expand-all-other") {
+          state.otherAssets.forEach((o) => { if (Array.isArray(o.holdings)) expanded.add(o.id); });
+          renderAll();
+          return;
+        }
+        if (action === "collapse-all-other") {
+          state.otherAssets.forEach((o) => { if (Array.isArray(o.holdings)) expanded.delete(o.id); });
+          renderAll();
           return;
         }
         return;

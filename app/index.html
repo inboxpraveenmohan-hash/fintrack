@@ -95,6 +95,7 @@
   .pos{color:var(--red);} .neg{color:var(--green);} .neu{color:var(--muted);}
   .icon-btn{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px;line-height:1;}
   .icon-btn:hover{background:var(--red-bg);color:var(--red);}
+  .icon-btn.move-btn:hover{background:var(--primary-light);color:var(--primary);}
 
   .empty-msg{padding:30px;text-align:center;color:var(--muted);font-size:13px;}
   .table-scroll{overflow-x:auto;}
@@ -183,6 +184,8 @@
             <option value="manual">Manual</option>
           </select>
         </label>
+        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="expand-all-classes">Expand All</button>
+        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="collapse-all-classes">Collapse All</button>
       </div>
     </div>
     <div class="table-scroll">
@@ -208,6 +211,10 @@
   <div class="section">
     <div class="section-head">
       <h2>Other Assets <span style="font-weight:400;color:var(--muted);font-size:12px;">(Emergency Fund, Chit, NPS, Gold, etc. — part of Net Worth, outside the 4-class allocation)</span></h2>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="expand-all-other">Expand All</button>
+        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="collapse-all-other">Collapse All</button>
+      </div>
     </div>
     <div class="table-scroll">
       <table id="otherTable">
