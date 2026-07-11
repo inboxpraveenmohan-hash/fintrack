@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"; // <- replace, see CLOUD_SYNC_SETUP.md
+  const CLIENT_ID = "476365461245-hivtv2tqqm9nl9tdv12jqclvb115jirb.apps.googleusercontent.com";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
   const DRIVE_FILENAME = "fintrack_portfolio.json";
   const DEBOUNCE_MS = 1800;
