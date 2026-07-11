@@ -171,9 +171,18 @@
   <div class="section">
     <div class="section-head">
       <h2>Asset Allocation</h2>
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span class="badge" id="monthlyInvestBadge"></span>
         <span class="badge" id="targetSumBadge"></span>
+        <span class="badge" id="sipSumBadge" style="display:none;"></span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">
+          SIP split:
+          <select id="sipModeSelect" class="cell-input" style="width:auto;padding:5px 8px;" data-type="meta" data-field="sipMode">
+            <option value="target">Same as Target %</option>
+            <option value="deviation">Deviation-weighted</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
       </div>
     </div>
     <div class="table-scroll">

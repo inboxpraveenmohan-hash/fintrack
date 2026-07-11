@@ -16,6 +16,11 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 - **Edit inline**: click any Target %, current value, or SIP % cell to edit. Totals, deviation, correction and net worth recalculate immediately.
 - **Add/remove** asset classes and holdings in Asset Allocation, or items/subsections in Other Assets, using the + rows and ✕ buttons.
+- **SIP split** (dropdown next to the Asset Allocation table): controls how your Monthly Investment splits across the 4 asset classes.
+  - **Same as Target %** (default) — each class's SIP share always matches its target allocation %.
+  - **Deviation-weighted** — new money is steered toward whichever classes are furthest *under* their target, proportional to the shortfall; a class already at or above target gets 0% until the others catch up. Recalculates automatically as values change, so it's a live rebalancing suggestion, not a one-time snapshot.
+  - **Manual** — type each class's SIP % directly (a badge shows the running total, like Target %). Only this mode's numbers are ever edited by hand; the other two are always computed.
+  - This only changes how the total splits *across* the 4 classes — the existing per-holding "SIP %" (how a class's own SIP further splits among its funds) is unaffected either way.
 - **Other Assets subsections**: most other-asset items (Chit, NPS, Safe Gold, …) are a single value, but an item can instead be a **subsection** — an expandable group of individual line items whose values sum to the section's total (e.g. "Bonds" holding several NCDs). Click "+ Add Subsection" to create one, then expand it and use "+ Add Item" inside.
 - **Import CSV/Excel**: use "Download Template" to get a starter file with the current column layout, fill it in Excel/Sheets, then "Import CSV / Excel" to load it (this replaces the current portfolio — export a backup first if unsure).
 - **Export**: "Export CSV" / "Export Excel" save your current portfolio as a backup or for editing outside the app.
@@ -25,10 +30,10 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 ## Import/Export file format
 
-A flat table with columns: `Section, Name, Parent, CurrentValue, TargetPct, SIPPct, MonthlyContribution, ISIN`
+A flat table with columns: `Section, Name, Parent, CurrentValue, TargetPct, SIPPct, MonthlyContribution, ISIN, ManualSipPct`
 
-- `Meta` rows set `MonthlyInvestment` and `Updated` date.
-- `AssetClass` rows define a class name and its `TargetPct` (should sum to 100 across classes).
+- `Meta` rows set `MonthlyInvestment`, `Updated` date, and `SipMode` (`target` / `deviation` / `manual`).
+- `AssetClass` rows define a class name, its `TargetPct` (should sum to 100 across classes), and `ManualSipPct` (only used when `SipMode` is `manual`; should also sum to 100 across classes).
 - `Holding` rows define a fund/stock under a class (`Parent` must match an AssetClass name), its `CurrentValue`, `SIPPct` (share of that class's monthly SIP; should sum to 100 within each class), and optionally `ISIN` (used for exact matching on CDSL sync).
 - `Other` rows define a simple net-worth item outside the 4-class allocation (Chit, NPS, Gold, etc.) with `CurrentValue` and `MonthlyContribution`.
 - `OtherGroup` rows define an Other Assets subsection (e.g. "Bonds") and its `MonthlyContribution`; `OtherHolding` rows are its line items (`Parent` must match an OtherGroup name), with `CurrentValue` and optionally `ISIN`.

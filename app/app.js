@@ -22,9 +22,10 @@
     return {
       updated: "2026-01-01",
       monthlyInvestment: 10000,
+      sipMode: "target",
       assetClasses: [
         {
-          id: uid("ac"), name: "Indian Equity", targetPct: 55,
+          id: uid("ac"), name: "Indian Equity", targetPct: 55, manualSipPct: 55,
           holdings: [
             { id: uid("h"), name: "Sample Large Cap Fund", currentValue: 30000, sipPct: 25, isin: null },
             { id: uid("h"), name: "Sample Mid Cap Fund", currentValue: 25000, sipPct: 25, isin: null },
@@ -34,20 +35,20 @@
           ]
         },
         {
-          id: uid("ac"), name: "Foreign Equity", targetPct: 20,
+          id: uid("ac"), name: "Foreign Equity", targetPct: 20, manualSipPct: 20,
           holdings: [
             { id: uid("h"), name: "Sample US Equity Fund", currentValue: 28000, sipPct: 100, isin: null },
             { id: uid("h"), name: "Sample Clean Energy Fund", currentValue: 0, sipPct: 0, isin: null }
           ]
         },
         {
-          id: uid("ac"), name: "Debt", targetPct: 10,
+          id: uid("ac"), name: "Debt", targetPct: 10, manualSipPct: 10,
           holdings: [
             { id: uid("h"), name: "Sample Short Duration Fund", currentValue: 18000, sipPct: 100, isin: null }
           ]
         },
         {
-          id: uid("ac"), name: "Commodities", targetPct: 15,
+          id: uid("ac"), name: "Commodities", targetPct: 15, manualSipPct: 15,
           holdings: [
             { id: uid("h"), name: "Sample Gold Savings Fund", currentValue: 14000, sipPct: 40, isin: null },
             { id: uid("h"), name: "Sample Gold Jewellery Scheme", currentValue: 6000, sipPct: 60, isin: null },
@@ -72,7 +73,7 @@
   }
 
   function emptyData() {
-    return { updated: new Date().toISOString().slice(0, 10), monthlyInvestment: 0, assetClasses: [], otherAssets: [] };
+    return { updated: new Date().toISOString().slice(0, 10), monthlyInvestment: 0, sipMode: "target", assetClasses: [], otherAssets: [] };
   }
 
   function allGroupIds(data) {
@@ -146,13 +147,32 @@
     const otherTotal = data.otherAssets.reduce((s, o) => s + (Number(o.currentValue) || 0), 0);
     const netWorth = totalAssets + otherTotal;
     const monthlyInvestment = Number(data.monthlyInvestment) || 0;
+    const sipMode = data.sipMode || "target";
 
     data.assetClasses.forEach((ac) => {
       ac.currentPct = totalAssets ? (ac.currentValue / totalAssets) * 100 : 0;
       ac.targetAmount = (ac.targetPct / 100) * totalAssets;
       ac.deviation = ac.currentPct - ac.targetPct;
       ac.correction = ac.targetAmount - ac.currentValue;
-      ac.sipAmount = (ac.targetPct / 100) * monthlyInvestment;
+    });
+
+    // How the monthly SIP splits across classes: same as Target %, weighted toward
+    // under-target classes ("deviation"), or a manually typed split.
+    if (sipMode === "manual") {
+      data.assetClasses.forEach((ac) => { ac.sipAllocPct = Number(ac.manualSipPct) || 0; });
+    } else if (sipMode === "deviation") {
+      const weights = data.assetClasses.map((ac) => Math.max(ac.correction, 0));
+      const totalWeight = weights.reduce((s, w) => s + w, 0);
+      data.assetClasses.forEach((ac, i) => {
+        // If nothing is under target (perfectly balanced), fall back to Target % split.
+        ac.sipAllocPct = totalWeight > 0 ? (weights[i] / totalWeight) * 100 : (Number(ac.targetPct) || 0);
+      });
+    } else {
+      data.assetClasses.forEach((ac) => { ac.sipAllocPct = Number(ac.targetPct) || 0; });
+    }
+
+    data.assetClasses.forEach((ac) => {
+      ac.sipAmount = (ac.sipAllocPct / 100) * monthlyInvestment;
       ac.holdings.forEach((h) => {
         h.currentPct = ac.currentValue ? (h.currentValue / ac.currentValue) * 100 : 0;
         h.sipAmount = ac.sipAmount * ((Number(h.sipPct) || 0) / 100);
@@ -160,9 +180,10 @@
     });
 
     const targetPctSum = data.assetClasses.reduce((s, ac) => s + (Number(ac.targetPct) || 0), 0);
+    const sipAllocPctSum = data.assetClasses.reduce((s, ac) => s + (Number(ac.sipAllocPct) || 0), 0);
     const offTargetCount = data.assetClasses.filter((ac) => Math.abs(ac.deviation) > DEVIATION_THRESHOLD).length;
 
-    return { totalAssets, otherTotal, netWorth, monthlyInvestment, targetPctSum, offTargetCount };
+    return { totalAssets, otherTotal, netWorth, monthlyInvestment, targetPctSum, sipAllocPctSum, offTargetCount, sipMode };
   }
 
   // ---------- formatting ----------
@@ -220,7 +241,9 @@
           "<td>" + fmtPct(ac.currentPct) + "</td>" +
           '<td class="' + devClass + '">' + fmtSigned(ac.deviation, "%") + "</td>" +
           '<td class="' + (ac.correction > 0 ? "neg" : ac.correction < 0 ? "pos" : "neu") + '">' + fmtSigned(ac.correction) + "</td>" +
-          "<td>" + fmtINR(ac.sipAmount) + "</td>" +
+          "<td>" + (d.sipMode === "manual"
+            ? '<input class="cell-input small" type="number" step="0.1" data-type="class" data-id="' + ac.id + '" data-field="manualSipPct" value="' + numOr0(ac.manualSipPct) + '" onclick="event.stopPropagation()"> % → ' + fmtINR(ac.sipAmount)
+            : fmtPct(ac.sipAllocPct) + " → " + fmtINR(ac.sipAmount)) + "</td>" +
           '<td><button class="icon-btn" data-action="delete-class" data-id="' + ac.id + '" title="Delete asset class">✕</button></td>' +
         "</tr>"
       );
@@ -278,6 +301,18 @@
 
     document.getElementById("monthlyInvestBadge").innerHTML =
       'Monthly investment: <input class="cell-input small" style="width:70px;color:inherit;font-weight:700;" type="number" data-type="meta" data-field="monthlyInvestment" value="' + numOr0(state.monthlyInvestment) + '">';
+
+    document.getElementById("sipModeSelect").value = d.sipMode;
+
+    const sipBadge = document.getElementById("sipSumBadge");
+    if (d.sipMode === "manual") {
+      const sipSumOk = Math.abs(d.sipAllocPctSum - 100) < 0.01;
+      sipBadge.textContent = "SIP % total: " + d.sipAllocPctSum.toFixed(0) + "%";
+      sipBadge.className = "badge " + (sipSumOk ? "ok" : "warn");
+      sipBadge.style.display = "";
+    } else {
+      sipBadge.style.display = "none";
+    }
   }
 
   function renderOtherTable(d) {
@@ -439,7 +474,7 @@
   // ---------- field updates ----------
   function updateField(ds, value) {
     const { type, id, parent, field } = ds;
-    const isNumeric = ["targetPct", "currentValue", "sipPct", "monthlyContribution", "monthlyInvestment"].includes(field);
+    const isNumeric = ["targetPct", "currentValue", "sipPct", "monthlyContribution", "monthlyInvestment", "manualSipPct"].includes(field);
     const val = isNumeric ? (parseFloat(value) || 0) : value;
 
     if (type === "meta") {
@@ -462,26 +497,27 @@
   }
 
   // ---------- CSV / XLSX import-export ----------
-  const HEADER_ORDER = ["Section", "Name", "Parent", "CurrentValue", "TargetPct", "SIPPct", "MonthlyContribution", "ISIN"];
+  const HEADER_ORDER = ["Section", "Name", "Parent", "CurrentValue", "TargetPct", "SIPPct", "MonthlyContribution", "ISIN", "ManualSipPct"];
 
   function toRows(data) {
     const rows = [];
-    rows.push({ Section: "Meta", Name: "MonthlyInvestment", Parent: "", CurrentValue: data.monthlyInvestment, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "" });
-    rows.push({ Section: "Meta", Name: "Updated", Parent: "", CurrentValue: data.updated, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "" });
+    rows.push({ Section: "Meta", Name: "MonthlyInvestment", Parent: "", CurrentValue: data.monthlyInvestment, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
+    rows.push({ Section: "Meta", Name: "Updated", Parent: "", CurrentValue: data.updated, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
+    rows.push({ Section: "Meta", Name: "SipMode", Parent: "", CurrentValue: data.sipMode || "target", TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
     data.assetClasses.forEach((ac) => {
-      rows.push({ Section: "AssetClass", Name: ac.name, Parent: "", CurrentValue: "", TargetPct: ac.targetPct, SIPPct: "", MonthlyContribution: "", ISIN: "" });
+      rows.push({ Section: "AssetClass", Name: ac.name, Parent: "", CurrentValue: "", TargetPct: ac.targetPct, SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: ac.manualSipPct });
       ac.holdings.forEach((h) => {
-        rows.push({ Section: "Holding", Name: h.name, Parent: ac.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: h.sipPct, MonthlyContribution: "", ISIN: h.isin || "" });
+        rows.push({ Section: "Holding", Name: h.name, Parent: ac.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: h.sipPct, MonthlyContribution: "", ISIN: h.isin || "", ManualSipPct: "" });
       });
     });
     data.otherAssets.forEach((o) => {
       if (Array.isArray(o.holdings)) {
-        rows.push({ Section: "OtherGroup", Name: o.name, Parent: "", CurrentValue: "", TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "" });
+        rows.push({ Section: "OtherGroup", Name: o.name, Parent: "", CurrentValue: "", TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "", ManualSipPct: "" });
         o.holdings.forEach((h) => {
-          rows.push({ Section: "OtherHolding", Name: h.name, Parent: o.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: h.isin || "" });
+          rows.push({ Section: "OtherHolding", Name: h.name, Parent: o.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: h.isin || "", ManualSipPct: "" });
         });
       } else {
-        rows.push({ Section: "Other", Name: o.name, Parent: "", CurrentValue: o.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "" });
+        rows.push({ Section: "Other", Name: o.name, Parent: "", CurrentValue: o.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "", ManualSipPct: "" });
       }
     });
     return rows;
@@ -497,7 +533,8 @@
       if (section === "AssetClass") {
         const name = String(r.Name || "").trim();
         if (!name) return;
-        const ac = { id: uid("ac"), name, targetPct: parseFloat(r.TargetPct) || 0, holdings: [] };
+        const targetPct = parseFloat(r.TargetPct) || 0;
+        const ac = { id: uid("ac"), name, targetPct, manualSipPct: r.ManualSipPct !== "" && r.ManualSipPct != null ? (parseFloat(r.ManualSipPct) || 0) : targetPct, holdings: [] };
         data.assetClasses.push(ac);
         classMap[name] = ac;
       } else if (section === "OtherGroup") {
@@ -510,6 +547,7 @@
         const name = String(r.Name || "").trim();
         if (name === "MonthlyInvestment") data.monthlyInvestment = parseFloat(r.CurrentValue) || 0;
         if (name === "Updated" && r.CurrentValue) data.updated = String(r.CurrentValue).trim();
+        if (name === "SipMode" && ["target", "deviation", "manual"].includes(String(r.CurrentValue).trim())) data.sipMode = String(r.CurrentValue).trim();
       }
     });
 
@@ -521,7 +559,7 @@
         const parentName = String(r.Parent || "").trim() || "Uncategorized";
         let ac = classMap[parentName];
         if (!ac) {
-          ac = { id: uid("ac"), name: parentName, targetPct: 0, holdings: [] };
+          ac = { id: uid("ac"), name: parentName, targetPct: 0, manualSipPct: 0, holdings: [] };
           data.assetClasses.push(ac);
           classMap[parentName] = ac;
         }
@@ -1022,7 +1060,7 @@
           const name = document.getElementById("newClassName").value.trim();
           const target = parseFloat(document.getElementById("newClassTarget").value) || 0;
           if (!name) { toast("Enter a name for the new asset class."); return; }
-          const ac = { id: uid("ac"), name, targetPct: target, holdings: [] };
+          const ac = { id: uid("ac"), name, targetPct: target, manualSipPct: target, holdings: [] };
           state.assetClasses.push(ac);
           expanded.add(ac.id);
           persist(); renderAll();
