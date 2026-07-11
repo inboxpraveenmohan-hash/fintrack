@@ -2,13 +2,11 @@
 
 Cloud sync is optional — the app works exactly as before without it. This is a one-time setup, done in two places: GitHub (to host the app at a real URL) and Google Cloud Console (to let the app talk to your Drive). Both need your own accounts; I can't do these steps for you.
 
-## 1. Host the app on GitHub Pages
+## 1. Host the app on GitHub Pages — done ✅
 
-1. Create a new GitHub repository (public or private both work) and push this project to it — the workflow at `.github/workflows/pages.yml` is already set up to deploy the `app/` folder automatically on every push to `main`.
-2. In the repo's **Settings → Pages**, set **Source** to **GitHub Actions** (not "Deploy from a branch").
-3. Push to `main` (or re-run the workflow from the **Actions** tab). After it finishes, your app is live at `https://<your-username>.github.io/<repo-name>/`.
+This is already live: **https://inboxpraveenmohan-hash.github.io/fintrack/**, deployed from [github.com/inboxpraveenmohan-hash/fintrack](https://github.com/inboxpraveenmohan-hash/fintrack) (public repo — the seed data is illustrative placeholder data, not real portfolio numbers). The workflow at `.github/workflows/pages.yml` redeploys automatically on every push to `main`.
 
-Note the exact origin (scheme + host, no path) — you'll need it in step 2.4 below. For a repo named `FinTrack` owned by `you`, the origin is `https://you.github.io` (GitHub Pages origins don't include the repo name — origin matching only looks at scheme/host/port).
+For the Authorized JavaScript origin in step 2.4 below, the origin is `https://inboxpraveenmohan-hash.github.io` (no path, no trailing slash — GitHub Pages origins don't include the repo name; origin matching only looks at scheme/host/port).
 
 ## 2. Create a Google OAuth Client ID
 
@@ -24,7 +22,7 @@ Note the exact origin (scheme + host, no path) — you'll need it in step 2.4 be
    - Name: e.g. "FinTrack Web".
    - **Authorized JavaScript origins** — add both of these (no trailing slash, no path):
      - `http://localhost:8000` (or whatever port you use for local testing — see step 3 below)
-     - `https://<your-username>.github.io` (your real GitHub Pages origin from step 1)
+     - `https://inboxpraveenmohan-hash.github.io` (the live site's origin, from step 1)
    - Leave **Authorized redirect URIs** empty — not needed for this flow.
    - Click **Create**. Copy the Client ID that looks like `123456789-abc...apps.googleusercontent.com`.
 

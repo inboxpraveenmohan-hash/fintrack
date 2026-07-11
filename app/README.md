@@ -2,6 +2,8 @@
 
 A portable, offline portfolio dashboard that replicates the "Wealth Portfolio" spreadsheet: asset allocation vs. target, deviation/correction, monthly SIP splits, and net worth tracking.
 
+Live demo (illustrative sample data, not real portfolio numbers): **https://inboxpraveenmohan-hash.github.io/fintrack/**
+
 ## Running it
 
 Double-click `index.html` to open it in any modern browser (Chrome, Edge, Firefox). No install, no server, no internet connection needed after you have the files — everything (including the Excel/CSV library and charting library) is bundled in the `lib/` folder next to `index.html`.
