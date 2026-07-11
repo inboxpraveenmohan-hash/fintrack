@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinTrack — Portfolio Manager</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f46e5">
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --border:#e4e8f0; --text:#1c2333; --muted:#6b7386;
+    --primary:#4f46e5; --primary-dark:#4338ca; --primary-light:#eef0fe;
+    --green:#0f9d58; --green-bg:#e8f7ee; --red:#d93025; --red-bg:#fdecea;
+    --amber:#b8860b; --amber-bg:#fdf6e3;
+    --shadow:0 1px 2px rgba(20,20,43,.04), 0 4px 16px rgba(20,20,43,.06);
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  a{color:var(--primary);}
+  .wrap{max-width:1280px;margin:0 auto;padding:20px 24px 60px;}
+
+  /* Header */
+  header.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 0;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .logo{font-size:26px;}
+  .brand h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px;}
+  .brand .sub{font-size:12px;color:var(--muted);margin-top:1px;}
+  .updated-field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+  .updated-field input{border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;color:var(--text);background:#fff;}
+  .header-right{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .account-area{display:flex;align-items:center;gap:8px;}
+  .account-area .btn{padding:7px 12px;font-size:12px;}
+  .account-area .btn:disabled{opacity:.55;cursor:not-allowed;}
+  .account-area .badge{font-size:11px;}
+
+  /* Toolbar */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;}
+  .btn{appearance:none;border:1px solid var(--border);background:#fff;color:var(--text);padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.15s;}
+  .btn:hover{border-color:var(--primary);color:var(--primary);}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);color:#fff;}
+  .btn.danger:hover{border-color:var(--red);color:var(--red);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  input[type=file]{display:none;}
+
+  /* Stat cards */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
+  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
+  .stat-card .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+  .stat-card .value{font-size:24px;font-weight:700;margin-top:6px;}
+  .stat-card .hint{font-size:12px;color:var(--muted);margin-top:4px;}
+  .stat-card .hint.warn{color:var(--amber);}
+  .stat-card .hint.ok{color:var(--green);}
+
+  /* Charts */
+  .charts{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;margin-bottom:22px;}
+  @media (max-width:900px){.charts{grid-template-columns:1fr;}}
+  .chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
+  .chart-card h3{margin:0 0 12px;font-size:14px;font-weight:700;}
+  .chart-card .canvas-box{position:relative;height:260px;}
+
+  /* Sections */
+  .section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden;}
+  .section-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;}
+  .section-head h2{margin:0;font-size:15px;font-weight:700;}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--primary-light);color:var(--primary);}
+  .badge.warn{background:var(--amber-bg);color:var(--amber);}
+  .badge.ok{background:var(--green-bg);color:var(--green);}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  thead th:first-child, thead th.left{text-align:left;}
+  tbody td{padding:9px 12px;border-bottom:1px solid #f0f2f8;text-align:right;white-space:nowrap;}
+  tbody td:first-child, tbody td.left{text-align:left;white-space:normal;}
+  tbody tr:hover{background:#fafbfe;}
+  tbody tr.class-row{cursor:pointer;font-weight:600;background:#fbfbfe;}
+  tbody tr.class-row:hover{background:var(--primary-light);}
+  tbody tr.holding-row td{color:var(--muted);}
+  tbody tr.holding-row td.left{color:var(--text);padding-left:30px;}
+  tbody tr.add-row td{padding:10px 12px;background:#fafbff;}
+
+  .name-cell{display:flex;align-items:center;gap:8px;}
+  .chevron{display:inline-block;transition:transform .15s;color:var(--muted);font-size:11px;width:12px;}
+  .chevron.open{transform:rotate(90deg);}
+  .swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+
+  input.cell-input{width:80px;border:1px solid transparent;background:transparent;text-align:right;font-size:13px;font-family:inherit;color:var(--text);border-radius:5px;padding:4px 6px;}
+  input.cell-input:hover{border-color:var(--border);}
+  input.cell-input:focus{border-color:var(--primary);background:#fff;outline:none;}
+  input.cell-input.name-input{width:170px;text-align:left;font-weight:500;}
+  input.cell-input.small{width:56px;}
+
+  .pos{color:var(--red);} .neg{color:var(--green);} .neu{color:var(--muted);}
+  .icon-btn{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px;line-height:1;}
+  .icon-btn:hover{background:var(--red-bg);color:var(--red);}
+
+  .empty-msg{padding:30px;text-align:center;color:var(--muted);font-size:13px;}
+  .table-scroll{overflow-x:auto;}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:20px 0 0;}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(20,20,43,.45);display:none;align-items:center;justify-content:center;z-index:50;}
+  .modal-backdrop.show{display:flex;}
+  .modal{background:#fff;border-radius:var(--radius);padding:22px 24px;max-width:480px;width:90%;box-shadow:var(--shadow);}
+  .modal h3{margin:0 0 8px;font-size:16px;}
+  .modal p{font-size:13px;color:var(--muted);line-height:1.5;}
+  .modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+
+  .cdsl-modal{max-width:760px;max-height:85vh;display:flex;flex-direction:column;}
+  #cdslModalBody{overflow-y:auto;flex:1;margin-top:6px;}
+  .cdsl-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:16px 0 8px;}
+  .cdsl-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0f2f8;font-size:13px;}
+  .cdsl-row .cdsl-name{flex:1;min-width:0;}
+  .cdsl-row .cdsl-name .primary{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cdsl-row .cdsl-name .secondary{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cdsl-row .cdsl-value{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;min-width:150px;}
+  .cdsl-row select, .cdsl-row input.cdsl-newclass{border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;}
+  .cdsl-empty{color:var(--muted);font-size:13px;padding:10px 4px;}
+  .cdsl-unchanged{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;z-index:60;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">📊</div>
+      <div>
+        <h1>FinTrack — Portfolio Manager</h1>
+        <div class="sub">Portable, offline, browser-based investment dashboard</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="account-area" id="accountArea"></div>
+      <div class="updated-field">
+        Last updated
+        <input type="date" id="updatedInput" data-type="meta" data-field="updated">
+      </div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn primary" id="btnImport">📥 Import CSV / Excel</button>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+    <button class="btn" id="btnTemplate">📄 Download Template</button>
+    <button class="btn" id="btnExportCsv">⬇️ Export CSV</button>
+    <button class="btn" id="btnExportXlsx">⬇️ Export Excel</button>
+    <button class="btn primary" id="btnCdsl">🔄 Sync from CDSL Statement</button>
+    <input type="file" id="cdslFileInput" accept=".csv,.txt">
+    <button class="btn" id="btnSample">✨ Load Sample Portfolio</button>
+    <button class="btn danger" id="btnReset">🗑️ Reset All Data</button>
+  </div>
+
+  <div class="stats" id="statCards"></div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <h3>Target vs Current Allocation (%)</h3>
+      <div class="canvas-box"><canvas id="chartAllocation"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Net Worth Composition</h3>
+      <div class="canvas-box"><canvas id="chartNetWorth"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Asset Allocation</h2>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="badge" id="monthlyInvestBadge"></span>
+        <span class="badge" id="targetSumBadge"></span>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table id="allocationTable">
+        <thead>
+          <tr>
+            <th class="left">Asset Class / Holding</th>
+            <th>Target %</th>
+            <th>Target Amount</th>
+            <th>Current Value</th>
+            <th>Current %</th>
+            <th>Deviation</th>
+            <th>Correction</th>
+            <th>Monthly SIP</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="allocationBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Other Assets <span style="font-weight:400;color:var(--muted);font-size:12px;">(Emergency Fund, Chit, NPS, Gold, etc. — part of Net Worth, outside the 4-class allocation)</span></h2>
+    </div>
+    <div class="table-scroll">
+      <table id="otherTable">
+        <thead>
+          <tr>
+            <th class="left">Name</th>
+            <th>Current Value</th>
+            <th>Monthly Contribution</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="otherBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>All data stays in this browser (localStorage) — nothing is uploaded anywhere. Use Export to back up.</footer>
+</div>
+
+<div class="modal-backdrop" id="confirmBackdrop">
+  <div class="modal">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p id="confirmMsg"></p>
+    <div class="modal-actions">
+      <button class="btn" id="confirmCancel">Cancel</button>
+      <button class="btn" id="confirmOk" style="color:#fff;">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cdslBackdrop">
+  <div class="modal cdsl-modal">
+    <h3>Sync from CDSL Statement</h3>
+    <p>Review the matches below, then apply. Only checked rows are changed — nothing is applied until you click Apply.</p>
+    <div id="cdslModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn" id="cdslCancel">Cancel</button>
+      <button class="btn primary" id="cdslApply">Apply Selected</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="lib/xlsx.full.min.js"></script>
+<script src="lib/chart.umd.min.js"></script>
+<script src="app.js"></script>
+<!-- Optional cloud sync: needs live internet access to Google, so it's the one thing in this
+     app not vendored locally. If it fails to load (offline, blocked, or opened via file://),
+     the app above already works fully offline on its own — this is purely additive. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="drive-sync.js"></script>
+<script>
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+</script>
+</body>
+</html>
