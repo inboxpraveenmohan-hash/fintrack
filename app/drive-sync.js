@@ -49,7 +49,14 @@
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: DRIVE_SCOPE,
-      callback: () => {} // overridden per-call in requestToken()
+      // Silent reauth (prompt: '') classically depended on a 3rd-party cookie to
+      // accounts.google.com, which Chrome/Edge/Safari now block or partition by default —
+      // that's what made the "am I still signed in?" check on every reload unreliable.
+      // FedCM is the browser-mediated replacement Google now requires for that silent
+      // path to keep working; opting in here is what makes sign-in actually persist.
+      use_fedcm_for_prompt: true,
+      callback: () => {}, // overridden per-call in requestToken()
+      error_callback: () => {} // overridden per-call in requestToken()
     });
   }
 
@@ -68,6 +75,15 @@
         accessToken = resp.access_token;
         tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 0) * 1000;
         resolve(accessToken);
+      };
+      // FedCM reports failures (no session, dialog dismissed, opted out, etc.) here
+      // instead of through callback() — without this, those cases fell through to the
+      // 12s timeout instead of failing fast.
+      tokenClient.error_callback = (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error((err && err.type) || "sign-in unavailable"));
       };
       tokenClient.requestAccessToken({ prompt: promptMode });
     });
