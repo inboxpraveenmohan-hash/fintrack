@@ -14,6 +14,8 @@
   const DEBOUNCE_MS = 1800;
   const WAS_SIGNED_IN_KEY = "fintrack_drive_was_signed_in";
   const FILE_ID_KEY = "fintrack_drive_file_id";
+  const ACCESS_TOKEN_KEY = "fintrack_drive_access_token";
+  const TOKEN_EXPIRES_KEY = "fintrack_drive_token_expires_at";
 
   // localStorage throws for opaque origins (e.g. file://) in some browsers — same guard
   // pattern as app.js's persist()/load(), so a blocked localStorage never breaks this module.
@@ -22,8 +24,12 @@
   function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } }
 
   let tokenClient = null;
-  let accessToken = null;
-  let tokenExpiresAt = 0;
+  // Cache the access token itself (not just "was signed in") across reloads. Google's token
+  // client only supports the dialog UX for requestAccessToken() — there is no silent variant —
+  // so the only way to avoid an account-chooser popup on every reload is to not ask for a new
+  // token at all when the previous one (~1hr lifetime) is still valid.
+  let accessToken = safeGet(ACCESS_TOKEN_KEY);
+  let tokenExpiresAt = Number(safeGet(TOKEN_EXPIRES_KEY)) || 0;
   let fileId = safeGet(FILE_ID_KEY);
   let debounceTimer = null;
   let pendingPush = false;
@@ -49,11 +55,10 @@
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: DRIVE_SCOPE,
-      // Silent reauth (prompt: '') classically depended on a 3rd-party cookie to
-      // accounts.google.com, which Chrome/Edge/Safari now block or partition by default —
-      // that's what made the "am I still signed in?" check on every reload unreliable.
-      // FedCM is the browser-mediated replacement Google now requires for that silent
-      // path to keep working; opting in here is what makes sign-in actually persist.
+      // Note: Google's token client only supports the dialog UX for requestAccessToken() —
+      // there is no fully silent grant, with or without this flag (that's what the access-token
+      // cache above is for). This just opts into the FedCM-based dialog instead of the legacy
+      // 3rd-party-cookie one, which Chrome/Edge/Safari now block or partition by default.
       use_fedcm_for_prompt: true,
       callback: () => {}, // overridden per-call in requestToken()
       error_callback: () => {} // overridden per-call in requestToken()
@@ -74,6 +79,8 @@
         if (!resp || resp.error) { reject(new Error((resp && resp.error) || "sign-in failed")); return; }
         accessToken = resp.access_token;
         tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 0) * 1000;
+        safeSet(ACCESS_TOKEN_KEY, accessToken);
+        safeSet(TOKEN_EXPIRES_KEY, String(tokenExpiresAt));
         resolve(accessToken);
       };
       // FedCM reports failures (no session, dialog dismissed, opted out, etc.) here
@@ -341,6 +348,8 @@
     signedIn = false;
     clearTimeout(debounceTimer);
     safeRemove(WAS_SIGNED_IN_KEY);
+    safeRemove(ACCESS_TOKEN_KEY);
+    safeRemove(TOKEN_EXPIRES_KEY);
     updateAccountUI();
     window.fintrack.toast("Signed out of Google. Your data stays on this device from now on.");
   }
@@ -349,12 +358,24 @@
     updateAccountUI();
     if (isFileProtocol()) return;
 
+    const wasSignedIn = safeGet(WAS_SIGNED_IN_KEY) === "1";
+    const hasValidCachedToken = accessToken && Date.now() < tokenExpiresAt - 60000;
+
+    if (wasSignedIn && hasValidCachedToken) {
+      // Reuse the token from a previous reload — no dialog, no waiting on Google's script.
+      // It's only ever ~1hr old at most, so this keeps sync silent across reloads that
+      // happen within that window; a fresh dialog is only unavoidable once it truly expires.
+      signedIn = true;
+      updateAccountUI();
+      reconcileOnSignIn(); // don't block startup on this
+    }
+
     await waitForGis(5000);
     if (!gisReady()) return; // offline or blocked — stay local-only, sign-in button will retry on click
     initTokenClient();
 
-    if (safeGet(WAS_SIGNED_IN_KEY) === "1") {
-      await signIn(""); // silent restore, no popup; no-ops quietly if the Google session has expired
+    if (wasSignedIn && !hasValidCachedToken) {
+      await signIn(""); // token actually expired — Google's token client only offers the dialog UX, so this shows the account chooser once
     }
 
     window.addEventListener("online", () => { if (pendingPush && signedIn) flush(); });
