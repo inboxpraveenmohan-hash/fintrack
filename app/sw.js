@@ -8,7 +8,7 @@
    offline. Library files (lib/*) rarely change, so they stay cache-first to avoid
    re-downloading them every load. */
 
-const CACHE_NAME = "fintrack-shell-v3";
+const CACHE_NAME = "fintrack-shell-v4";
 const APP_FILES = ["./", "./index.html", "./app.js", "./drive-sync.js", "./manifest.json"];
 const LIB_FILES = ["./lib/xlsx.full.min.js", "./lib/chart.umd.min.js", "./apple-touch-icon.png", "./icon-192.png", "./icon-512.png"];
 
@@ -39,8 +39,11 @@ self.addEventListener("fetch", (event) => {
 
   if (isAppFile(url.pathname)) {
     // network-first: today's deploy wins whenever online; cache is only the offline fallback.
+    // cache: "no-store" is required here — plain fetch() still honors the browser's own HTTP
+    // cache (GitHub Pages serves these with a 10-minute max-age), so without this a reload
+    // could silently get a stale copy from disk cache even though this code is "network-first".
     event.respondWith(
-      fetch(event.request).then((resp) => {
+      fetch(event.request, { cache: "no-store" }).then((resp) => {
         const copy = resp.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return resp;
