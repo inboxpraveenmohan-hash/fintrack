@@ -154,7 +154,7 @@
   // ---------- state ----------
   let state = load();
   const migrated = migrateLegacyBondsClass(state);
-  let expanded = new Set(allGroupIds(state)); // start expanded
+  let expanded = new Set(); // start collapsed
   let chartAllocation = null;
   let chartNetWorth = null;
 
@@ -698,7 +698,7 @@
         const ok = await confirmDialog("Import portfolio?", "This will replace your current portfolio data with the contents of \"" + file.name + "\". Consider exporting a backup first.");
         if (!ok) return;
         state = parsed;
-        expanded = new Set(allGroupIds(state));
+        expanded = new Set();
         persist();
         renderAll();
         toast("Portfolio imported successfully.");
@@ -1090,7 +1090,7 @@
       const ok = await confirmDialog("Load sample portfolio?", "This replaces your current data with the sample portfolio (matching the reference sheet). Export a backup first if needed.");
       if (!ok) return;
       state = seedData();
-      expanded = new Set(allGroupIds(state));
+      expanded = new Set();
       persist();
       renderAll();
       document.getElementById("updatedInput").value = state.updated;
