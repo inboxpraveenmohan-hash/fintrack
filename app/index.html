@@ -2,20 +2,56 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>
+  // Apply any saved theme choice before first paint, so there's no flash of the wrong theme.
+  (function () {
+    try {
+      var t = localStorage.getItem("fintrack_theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* localStorage unavailable (e.g. file://) — falls back to system preference */ }
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinTrack — Portfolio Manager</title>
-<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIxIiBmaWxsPSIjMWMyMzMzIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMzgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLW9wYWNpdHk9IjAuNSIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHRleHQgeD0iNTAiIHk9IjY0IiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjgwMCIgZm9udC1zaXplPSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2ZmZmZmZiI+RlQ8L3RleHQ+PC9zdmc+">
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIyMSIgZmlsbD0iIzFjMjMzMyIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjM4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS1vcGFjaXR5PSIwLjUiIHN0cm9rZS13aWR0aD0iNCIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI4MDAiIGZvbnQtc2l6ZT0iMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmZmZmYiPkZUPC90ZXh0Pjwvc3ZnPg==">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#4338ca" id="themeColorMeta">
 <style>
   :root{
-    --bg:#f4f6fb; --card:#ffffff; --border:#e4e8f0; --text:#1c2333; --muted:#6b7386;
-    --primary:#4f46e5; --primary-dark:#4338ca; --primary-light:#eef0fe;
+    --bg:#eef0fa; --card:#ffffff; --border:#d8dcf0; --text:#0f1222; --muted:#565b78;
+    --primary:#4338ca; --primary-dark:#372f9e; --primary-light:#e0e2fa;
     --green:#0f9d58; --green-bg:#e8f7ee; --red:#d93025; --red-bg:#fdecea;
     --amber:#b8860b; --amber-bg:#fdf6e3;
+    --row-line:#f0f2f8; --row-tint:#fafbfe;
     --shadow:0 1px 2px rgba(20,20,43,.04), 0 4px 16px rgba(20,20,43,.06);
     --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#090a12; --card:#13141f; --border:#22243a; --text:#f3f4fc; --muted:#8c8fb0;
+      --primary:#9089f5; --primary-dark:#7c74f0; --primary-light:#1c1a33;
+      --green:#3ddc84; --green-bg:#14301f; --red:#ff6b6b; --red-bg:#3a1f22;
+      --amber:#f0c419; --amber-bg:#3a2f12;
+      --row-line:#1f2233; --row-tint:#181a28;
+      --shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#090a12; --card:#13141f; --border:#22243a; --text:#f3f4fc; --muted:#8c8fb0;
+    --primary:#9089f5; --primary-dark:#7c74f0; --primary-light:#1c1a33;
+    --green:#3ddc84; --green-bg:#14301f; --red:#ff6b6b; --red-bg:#3a1f22;
+    --amber:#f0c419; --amber-bg:#3a2f12;
+    --row-line:#1f2233; --row-tint:#181a28;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"]{
+    --bg:#eef0fa; --card:#ffffff; --border:#d8dcf0; --text:#0f1222; --muted:#565b78;
+    --primary:#4338ca; --primary-dark:#372f9e; --primary-light:#e0e2fa;
+    --green:#0f9d58; --green-bg:#e8f7ee; --red:#d93025; --red-bg:#fdecea;
+    --amber:#b8860b; --amber-bg:#fdf6e3;
+    --row-line:#f0f2f8; --row-tint:#fafbfe;
+    --shadow:0 1px 2px rgba(20,20,43,.04), 0 4px 16px rgba(20,20,43,.06);
   }
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
@@ -29,8 +65,9 @@
   .brand h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px;}
   .brand .sub{font-size:12px;color:var(--muted);margin-top:1px;}
   .updated-field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
-  .updated-field input{border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;color:var(--text);background:#fff;}
+  .updated-field input{border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;color:var(--text);background:var(--card);}
   .header-right{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .theme-toggle{padding:7px 10px;font-size:14px;line-height:1;}
   .account-area{display:flex;align-items:center;gap:8px;}
   .account-area .btn{padding:7px 12px;font-size:12px;}
   .account-area .btn:disabled{opacity:.55;cursor:not-allowed;}
@@ -38,7 +75,7 @@
 
   /* Toolbar */
   .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;}
-  .btn{appearance:none;border:1px solid var(--border);background:#fff;color:var(--text);padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.15s;}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--text);padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.15s;}
   .btn:hover{border-color:var(--primary);color:var(--primary);}
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
   .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);color:#fff;}
@@ -73,14 +110,14 @@
   table{width:100%;border-collapse:collapse;font-size:13px;}
   thead th{text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;}
   thead th:first-child, thead th.left{text-align:left;}
-  tbody td{padding:9px 12px;border-bottom:1px solid #f0f2f8;text-align:right;white-space:nowrap;}
+  tbody td{padding:9px 12px;border-bottom:1px solid var(--row-line);text-align:right;white-space:nowrap;}
   tbody td:first-child, tbody td.left{text-align:left;white-space:normal;}
-  tbody tr:hover{background:#fafbfe;}
-  tbody tr.class-row{cursor:pointer;font-weight:600;background:#fbfbfe;}
+  tbody tr:hover{background:var(--row-tint);}
+  tbody tr.class-row{cursor:pointer;font-weight:600;background:var(--row-tint);}
   tbody tr.class-row:hover{background:var(--primary-light);}
   tbody tr.holding-row td{color:var(--muted);}
   tbody tr.holding-row td.left{color:var(--text);padding-left:30px;}
-  tbody tr.add-row td{padding:10px 12px;background:#fafbff;}
+  tbody tr.add-row td{padding:10px 12px;background:var(--row-tint);}
 
   .name-cell{display:flex;align-items:center;gap:8px;}
   .chevron{display:inline-block;transition:transform .15s;color:var(--muted);font-size:11px;width:12px;}
@@ -89,7 +126,7 @@
 
   input.cell-input{width:80px;border:1px solid transparent;background:transparent;text-align:right;font-size:13px;font-family:inherit;color:var(--text);border-radius:5px;padding:4px 6px;}
   input.cell-input:hover{border-color:var(--border);}
-  input.cell-input:focus{border-color:var(--primary);background:#fff;outline:none;}
+  input.cell-input:focus{border-color:var(--primary);background:var(--card);outline:none;}
   input.cell-input.name-input{width:170px;text-align:left;font-weight:500;}
   input.cell-input.small{width:56px;}
 
@@ -104,7 +141,7 @@
 
   .modal-backdrop{position:fixed;inset:0;background:rgba(20,20,43,.45);display:none;align-items:center;justify-content:center;z-index:50;}
   .modal-backdrop.show{display:flex;}
-  .modal{background:#fff;border-radius:var(--radius);padding:22px 24px;max-width:480px;width:90%;box-shadow:var(--shadow);}
+  .modal{background:var(--card);border-radius:var(--radius);padding:22px 24px;max-width:480px;width:90%;box-shadow:var(--shadow);}
   .modal h3{margin:0 0 8px;font-size:16px;}
   .modal p{font-size:13px;color:var(--muted);line-height:1.5;}
   .modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
@@ -112,7 +149,7 @@
   .cdsl-modal{max-width:760px;max-height:85vh;display:flex;flex-direction:column;}
   #cdslModalBody{overflow-y:auto;flex:1;margin-top:6px;}
   .cdsl-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:16px 0 8px;}
-  .cdsl-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0f2f8;font-size:13px;}
+  .cdsl-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--row-line);font-size:13px;}
   .cdsl-row .cdsl-name{flex:1;min-width:0;}
   .cdsl-row .cdsl-name .primary{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cdsl-row .cdsl-name .secondary{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -130,13 +167,14 @@
 
   <header class="topbar">
     <div class="brand">
-      <img class="logo" alt="" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIxIiBmaWxsPSIjMWMyMzMzIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMzgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLW9wYWNpdHk9IjAuNSIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHRleHQgeD0iNTAiIHk9IjY0IiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjgwMCIgZm9udC1zaXplPSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2ZmZmZmZiI+RlQ8L3RleHQ+PC9zdmc+">
+      <img class="logo" alt="" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIyMSIgZmlsbD0iIzFjMjMzMyIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjM4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS1vcGFjaXR5PSIwLjUiIHN0cm9rZS13aWR0aD0iNCIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI4MDAiIGZvbnQtc2l6ZT0iMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmZmZmYiPkZUPC90ZXh0Pjwvc3ZnPg==">
       <div>
         <h1>FinTrack — Portfolio Manager</h1>
         <div class="sub">Portable investment dashboard</div>
       </div>
     </div>
     <div class="header-right">
+      <button class="btn theme-toggle" id="btnThemeToggle" title="Theme"></button>
       <div class="account-area" id="accountArea"></div>
       <div class="updated-field">
         Last updated

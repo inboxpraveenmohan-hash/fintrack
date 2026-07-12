@@ -9,6 +9,55 @@
   const DEVIATION_THRESHOLD = 2; // percentage points before flagging "off target"
   const PALETTE = ["#4f46e5", "#0ea5a4", "#f59e0b", "#ef4444", "#8b5cf6", "#0f9d58", "#0284c7", "#d946ef", "#84cc16", "#f97316"];
 
+  // ---------- theme (light / dark / system) ----------
+  const THEME_KEY = "fintrack_theme";
+  const THEME_COLORS = { light: "#4338ca", dark: "#9089f5" };
+  const THEME_ICONS = { system: "🌓", light: "☀️", dark: "🌙" };
+  const THEME_LABELS = { system: "Match system", light: "Light", dark: "Dark" };
+
+  function safeGetTheme() { try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; } }
+  function safeSetTheme(v) { try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* ignore */ } }
+
+  function resolvedTheme(pref) {
+    if (pref === "light" || pref === "dark") return pref;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function applyTheme(pref) {
+    const root = document.documentElement;
+    if (pref === "light" || pref === "dark") root.setAttribute("data-theme", pref);
+    else root.removeAttribute("data-theme");
+
+    const meta = document.getElementById("themeColorMeta");
+    if (meta) meta.setAttribute("content", THEME_COLORS[resolvedTheme(pref)]);
+
+    const btn = document.getElementById("btnThemeToggle");
+    if (btn) {
+      btn.textContent = THEME_ICONS[pref];
+      btn.title = "Theme: " + THEME_LABELS[pref] + " (click to change)";
+    }
+    // Chart.js bakes colors in at creation time, so it needs an explicit redraw on theme change —
+    // everything else on the page updates for free via CSS custom properties.
+    if (typeof renderCharts === "function") renderCharts(computeDerived(state));
+  }
+
+  function cycleTheme() {
+    const order = ["system", "light", "dark"];
+    const current = safeGetTheme() || "system";
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    safeSetTheme(next);
+    applyTheme(next);
+  }
+
+  function initTheme() {
+    applyTheme(safeGetTheme() || "system");
+    if (window.matchMedia) {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if ((safeGetTheme() || "system") === "system") applyTheme("system");
+      });
+    }
+  }
+
   let idCounter = 0;
   function uid(prefix) {
     idCounter += 1;
@@ -392,6 +441,16 @@
   }
 
   function renderCharts(d) {
+    // Chart.js bakes colors in at creation time rather than reading CSS, so pull the current
+    // theme's values at render time — this is what makes the charts follow the light/dark toggle.
+    const cs = getComputedStyle(document.documentElement);
+    const cssVar = (name) => cs.getPropertyValue(name).trim();
+    const primary = cssVar("--primary");
+    const primaryLight = cssVar("--primary-light");
+    const cardBg = cssVar("--card");
+    const mutedColor = cssVar("--muted");
+    const gridColor = cssVar("--border");
+
     const labels = state.assetClasses.map((a) => a.name);
     const targetData = state.assetClasses.map((a) => a.targetPct);
     const currentData = state.assetClasses.map((a) => a.currentPct);
@@ -404,14 +463,17 @@
       data: {
         labels,
         datasets: [
-          { label: "Target %", data: targetData, backgroundColor: "#c7d2fe", borderRadius: 4 },
-          { label: "Current %", data: currentData, backgroundColor: "#4f46e5", borderRadius: 4 }
+          { label: "Target %", data: targetData, backgroundColor: primaryLight, borderRadius: 4 },
+          { label: "Current %", data: currentData, backgroundColor: primary, borderRadius: 4 }
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
-        scales: { y: { beginAtZero: true, ticks: { callback: (v) => v + "%" } } }
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 }, color: mutedColor } } },
+        scales: {
+          x: { ticks: { color: mutedColor }, grid: { color: gridColor } },
+          y: { beginAtZero: true, ticks: { callback: (v) => v + "%", color: mutedColor }, grid: { color: gridColor } }
+        }
       }
     });
 
@@ -423,10 +485,10 @@
     if (chartNetWorth) chartNetWorth.destroy();
     chartNetWorth = new Chart(ctx2, {
       type: "doughnut",
-      data: { labels: nwLabels, datasets: [{ data: nwData, backgroundColor: nwColors, borderWidth: 2, borderColor: "#fff" }] },
+      data: { labels: nwLabels, datasets: [{ data: nwData, backgroundColor: nwColors, borderWidth: 2, borderColor: cardBg }] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 } } } }
+        plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
       }
     });
   }
@@ -977,6 +1039,9 @@
       persist();
       toast("Moved \"Bonds\" out of Asset Allocation into Other Assets — it no longer affects target %/deviation.");
     }
+
+    initTheme();
+    document.getElementById("btnThemeToggle").addEventListener("click", cycleTheme);
 
     document.getElementById("updatedInput").addEventListener("change", (e) => updateField({ type: "meta", field: "updated" }, e.target.value));
 

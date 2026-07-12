@@ -14,6 +14,7 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 ## Using it
 
+- **Theme** (button in the header, top right): cycles Match system → Light → Dark. Follows your OS/browser preference by default; the manual choice is remembered on this device either way.
 - **Edit inline**: click any Target %, current value, or SIP % cell to edit. Totals, deviation, correction and net worth recalculate immediately.
 - **Add/remove** asset classes and holdings in Asset Allocation, or items/subsections in Other Assets, using the + rows and ✕ buttons.
 - **SIP split** (dropdown next to the Asset Allocation table): controls how your Monthly Investment splits across the 4 asset classes.
