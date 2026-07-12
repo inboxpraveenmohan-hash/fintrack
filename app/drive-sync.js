@@ -305,7 +305,7 @@
     }
     initTokenClient();
     try {
-      await requestToken(promptMode || "consent");
+      await requestToken(promptMode == null ? "consent" : promptMode);
     } catch (err) {
       if (promptMode !== "") window.fintrack.toast("Google sign-in failed or was cancelled.");
       return;

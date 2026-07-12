@@ -1,26 +1,21 @@
-/* FinTrack service worker — caches only the static app shell (same-origin files) so the
+/* FinTrack service worker — caches the static app shell (same-origin files) so the
    offline/local-only mode keeps working with no connection at all. It never touches
    cross-origin requests (Google auth/Drive API) — those always hit the live network,
    which is what makes cloud sync correct rather than serving stale cached data.
 
-   Bump CACHE_NAME on every deploy that changes any cached file, or returning users will
-   keep loading a stale shell until the old cache is evicted. */
+   App logic files (HTML/JS) use network-first: always try the live network so a
+   deploy is visible on the very next reload, falling back to the cache only when
+   offline. Library files (lib/*) rarely change, so they stay cache-first to avoid
+   re-downloading them every load. */
 
-const CACHE_NAME = "fintrack-shell-v1";
-const SHELL_FILES = [
-  "./",
-  "./index.html",
-  "./app.js",
-  "./drive-sync.js",
-  "./manifest.json",
-  "./lib/xlsx.full.min.js",
-  "./lib/chart.umd.min.js"
-];
+const CACHE_NAME = "fintrack-shell-v2";
+const APP_FILES = ["./", "./index.html", "./app.js", "./drive-sync.js", "./manifest.json"];
+const LIB_FILES = ["./lib/xlsx.full.min.js", "./lib/chart.umd.min.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_FILES))
+      .then((cache) => cache.addAll(APP_FILES.concat(LIB_FILES)))
       .then(() => self.skipWaiting())
   );
 });
@@ -33,10 +28,26 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function isAppFile(pathname) {
+  return APP_FILES.some((f) => pathname.endsWith(f.replace("./", "/")) || (f === "./" && pathname.endsWith("/")));
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return; // never intercept Google/auth/API calls
   if (event.request.method !== "GET") return;
+
+  if (isAppFile(url.pathname)) {
+    // network-first: today's deploy wins whenever online; cache is only the offline fallback.
+    event.respondWith(
+      fetch(event.request).then((resp) => {
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return resp;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
