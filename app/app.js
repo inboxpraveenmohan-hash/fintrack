@@ -450,7 +450,9 @@
     const cs = getComputedStyle(document.documentElement);
     const cssVar = (name) => cs.getPropertyValue(name).trim();
     const primary = cssVar("--primary");
-    const primaryLight = cssVar("--primary-light");
+    // Deliberately not --primary-light: that token is tuned to sit *behind* bright text
+    // (badges), so in dark mode it's nearly black — invisible as a bar fill on its own.
+    const targetBarColor = cssVar("--chart-target");
     const cardBg = cssVar("--card");
     const mutedColor = cssVar("--muted");
     const gridColor = cssVar("--border");
@@ -467,7 +469,7 @@
       data: {
         labels,
         datasets: [
-          { label: "Target %", data: targetData, backgroundColor: primaryLight, borderRadius: 4 },
+          { label: "Target %", data: targetData, backgroundColor: targetBarColor, borderRadius: 4 },
           { label: "Current %", data: currentData, backgroundColor: primary, borderRadius: 4 }
         ]
       },
