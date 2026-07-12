@@ -173,6 +173,7 @@
   let storageWarned = false;
   function persist() {
     state._rev = new Date().toISOString();
+    state.updated = todayStr(); // "Last updated" is derived from real edits, not manually set
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -261,11 +262,14 @@
 
     const otherItemCount = state.otherAssets.reduce((s, o) => s + (Array.isArray(o.holdings) ? o.holdings.length : 1), 0);
     document.getElementById("statCards").innerHTML = [
-      card("Net Worth", fmtINR(d.netWorth), '<span class="hint">Updated ' + escapeHtml(state.updated || "") + "</span>"),
+      card("Net Worth", fmtINR(d.netWorth), '<span class="hint">Updated ' + escapeHtml(fmtDate(state.updated)) + "</span>"),
       card("Total Investments", fmtINR(d.totalAssets), '<span class="hint">Across ' + state.assetClasses.length + " asset classes</span>"),
       card("Other Assets", fmtINR(d.otherTotal), '<span class="hint">' + otherItemCount + " items (bonds, chit, NPS, gold…)</span>"),
       card("Monthly SIP / Investment", fmtINR(d.monthlyInvestment), offMsg)
     ].join("");
+
+    const updatedDisplay = document.getElementById("updatedDisplay");
+    if (updatedDisplay) updatedDisplay.textContent = fmtDate(state.updated);
   }
 
   function card(label, value, hintHtml) {
@@ -670,6 +674,13 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  function fmtDate(dateStr) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  }
+
   function exportCSV(data, filename) {
     const ws = buildWorksheet(data);
     downloadBlob(XLSX.utils.sheet_to_csv(ws), filename, "text/csv");
@@ -1033,17 +1044,16 @@
 
   // ---------- event wiring ----------
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("updatedInput").value = state.updated || "";
-    renderAll();
     if (migrated) {
       persist();
+    }
+    renderAll();
+    if (migrated) {
       toast("Moved \"Bonds\" out of Asset Allocation into Other Assets — it no longer affects target %/deviation.");
     }
 
     initTheme();
     document.getElementById("btnThemeToggle").addEventListener("click", cycleTheme);
-
-    document.getElementById("updatedInput").addEventListener("change", (e) => updateField({ type: "meta", field: "updated" }, e.target.value));
 
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -1093,7 +1103,6 @@
       expanded = new Set();
       persist();
       renderAll();
-      document.getElementById("updatedInput").value = state.updated;
       toast("Sample portfolio loaded.");
     });
 
@@ -1104,7 +1113,6 @@
       expanded = new Set();
       persist();
       renderAll();
-      document.getElementById("updatedInput").value = state.updated;
       toast("All data cleared.");
     });
 

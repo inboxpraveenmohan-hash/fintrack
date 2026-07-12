@@ -180,8 +180,6 @@
     window.fintrack.setState(remoteState);
     window.fintrack.setExpanded(new Set());
     window.fintrack.renderAll();
-    const updatedInput = document.getElementById("updatedInput");
-    if (updatedInput) updatedInput.value = remoteState.updated || "";
     lastSyncedRev = remoteState._rev;
     window.fintrack.persist();
   }
