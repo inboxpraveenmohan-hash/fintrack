@@ -35,10 +35,10 @@
   // ---------- seed data ----------
   function defaultAccounts() {
     return [
-      { id: uid("acct"), name: "SALARY", type: "asset", openingBalance: 0 },
-      { id: uid("acct"), name: "SAVINGS", type: "asset", openingBalance: 0 },
-      { id: uid("acct"), name: "CASH", type: "asset", openingBalance: 0 },
-      { id: uid("acct"), name: "CC", type: "liability", openingBalance: 0 }
+      { id: uid("acct"), name: "SALARY", openingBalance: 0 },
+      { id: uid("acct"), name: "SAVINGS", openingBalance: 0 },
+      { id: uid("acct"), name: "CASH", openingBalance: 0 },
+      { id: uid("acct"), name: "CC", openingBalance: 0 }
     ];
   }
 
@@ -228,18 +228,17 @@
   }
 
   // ---------- account balances (all-time, not scoped to the selected month) ----------
-  // Every account has a type: "asset" (money you hold) or "liability" (money you owe, e.g. CC).
-  // An "in" transaction on an asset account increases it; on a liability account it reduces
-  // what's owed. An "out" transaction does the opposite. Transfers move money between two of
-  // the user's own accounts and must move both balances in the correct, opposite-of-naive
-  // direction simultaneously (this is exactly what the original spreadsheet's #REF! formulas
-  // failed to do) — e.g. paying a CC bill reduces both the paying account and the CC debt.
-  function balanceSign(account) { return account.type === "liability" ? -1 : 1; }
-
+  // Every account uses the same plain formula: opening balance + in − out. There's no separate
+  // asset/liability type — a credit card account just goes negative as you spend on it (that
+  // negative number *is* what's owed) and comes back toward zero as you pay it down via a
+  // transfer, no special-casing needed. Transfers move money between two of the user's own
+  // accounts and must move both balances at once (this is exactly what the original
+  // spreadsheet's #REF! formulas failed to do) — e.g. paying a CC bill reduces the paying
+  // account and brings the CC balance back up toward zero simultaneously.
   function applyTxnToBalances(balances, txn) {
     const acct = findAccount(txn.accountId);
     if (!acct) return;
-    const delta = (txn.direction === "in" ? 1 : -1) * balanceSign(acct) * txn.amount;
+    const delta = (txn.direction === "in" ? 1 : -1) * txn.amount;
     balances[acct.id] = (balances[acct.id] || 0) + delta;
   }
 
@@ -247,8 +246,8 @@
     const from = findAccount(tr.fromAccountId);
     const to = findAccount(tr.toAccountId);
     if (!from || !to) return;
-    balances[from.id] = (balances[from.id] || 0) - balanceSign(from) * tr.amount;
-    balances[to.id] = (balances[to.id] || 0) + balanceSign(to) * tr.amount;
+    balances[from.id] = (balances[from.id] || 0) - tr.amount;
+    balances[to.id] = (balances[to.id] || 0) + tr.amount;
   }
 
   function computeAccountBalances() {
@@ -325,28 +324,17 @@
   function renderAccounts(d) {
     let rows = tracker().accounts.map((a) => {
       const bal = d.balances[a.id] || 0;
-      let balClass, balText;
-      if (a.type === "liability") {
-        balClass = bal > 0 ? "pos" : "neu";
-        balText = bal > 0 ? "Owes " + fmtINR(bal) : (bal < 0 ? "Credit " + fmtINR(Math.abs(bal)) : fmtINR(0));
-      } else {
-        balClass = bal < 0 ? "pos" : "neu";
-        balText = bal < 0 ? "-" + fmtINR(Math.abs(bal)) : fmtINR(bal);
-      }
+      const balClass = bal < 0 ? "pos" : "neu";
+      const balText = bal < 0 ? "-" + fmtINR(Math.abs(bal)) : fmtINR(bal);
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="account" data-id="' + a.id + '" data-field="name" value="' + escapeAttr(a.name) + '"></td>' +
-        '<td><select class="cell-input" style="width:auto;" data-type="account" data-id="' + a.id + '" data-field="type">' +
-        '<option value="asset"' + (a.type === "asset" ? " selected" : "") + ">Asset</option>" +
-        '<option value="liability"' + (a.type === "liability" ? " selected" : "") + ">Liability</option>" +
-        "</select></td>" +
         '<td><input class="cell-input" type="number" step="0.01" data-type="account" data-id="' + a.id + '" data-field="openingBalance" value="' + numOr0(a.openingBalance) + '"></td>' +
         '<td class="' + balClass + '">' + balText + "</td>" +
         '<td><button class="icon-btn" data-action="delete-account" data-id="' + a.id + '" title="Delete account">✕</button></td>' +
         "</tr>";
     }).join("");
-    if (!rows) rows = '<tr><td colspan="5" class="empty-msg">No accounts yet.</td></tr>';
+    if (!rows) rows = '<tr><td colspan="4" class="empty-msg">No accounts yet.</td></tr>';
     rows += '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New account name" id="newAccountName"></td>' +
-      '<td><select class="cell-input" style="width:auto;" id="newAccountType"><option value="asset">Asset</option><option value="liability">Liability</option></select></td>' +
       '<td><input class="cell-input" type="number" placeholder="Opening" id="newAccountOpening"></td><td></td>' +
       '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-account">+ Add</button></td></tr>';
     document.getElementById("accountsBody").innerHTML = rows;
@@ -457,13 +445,24 @@
     }).join("");
   }
 
+  // Selecting a top-level category (e.g. "Expense") should show every transaction filed under
+  // any of its sub-categories too, not just ones literally assigned to the top-level category
+  // itself — most transactions are assigned to a sub-category, never the group directly.
+  function categoryMatchesFilter(categoryId, filterId) {
+    if (!filterId) return true;
+    if (categoryId === filterId) return true;
+    const cat = findCategory(categoryId);
+    const top = cat && topLevelOf(cat);
+    return !!top && top.id === filterId;
+  }
+
   function renderTransactions(d) {
     let rows = d.monthTxns.slice().sort((a, b) => {
       if (a.date === b.date) return 0;
       const newerFirst = a.date > b.date ? -1 : 1;
       return sortOrder === "oldest" ? -newerFirst : newerFirst;
     });
-    if (filterCategoryId) rows = rows.filter((t) => t.categoryId === filterCategoryId);
+    if (filterCategoryId) rows = rows.filter((t) => categoryMatchesFilter(t.categoryId, filterCategoryId));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((t) => t.item.toLowerCase().includes(q));
@@ -502,11 +501,20 @@
     document.getElementById("txnBody").innerHTML = html;
   }
 
+  // Each top-level group is itself a selectable "All <Group>" option (matches every
+  // transaction under any of its sub-categories, via categoryMatchesFilter), grouped with its
+  // sub-categories underneath via <optgroup> for the same at-a-glance hierarchy as the
+  // add-transaction category picker.
   function renderTxnFilterOptions() {
     const sel = document.getElementById("txnFilterCategory");
     const current = sel.value;
     sel.innerHTML = '<option value="">All</option>' +
-      tracker().categories.map((c) => '<option value="' + c.id + '">' + escapeHtml(c.name) + "</option>").join("");
+      tracker().categories.filter((c) => !c.parentId).map((top) => {
+        const subs = tracker().categories.filter((c) => c.parentId === top.id);
+        const opts = '<option value="' + top.id + '">All ' + escapeHtml(top.name) + "</option>" +
+          subs.map((s) => '<option value="' + s.id + '">' + escapeHtml(s.name) + "</option>").join("");
+        return '<optgroup label="' + escapeHtml(top.name) + '">' + opts + "</optgroup>";
+      }).join("");
     sel.value = current;
     filterCategoryId = sel.value;
   }
@@ -523,7 +531,8 @@
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="category" data-id="' + c.id + '" data-field="name" value="' + escapeAttr(c.name) + '"' + (c.archived ? ' style="opacity:.5;"' : "") + "></td>" +
         '<td class="left"><select class="cell-input" style="width:auto;" data-type="category" data-id="' + c.id + '" data-field="parentId">' + parentSelectOptions(tracker().categories, c.parentId, c.id) + "</select></td>" +
-        '<td><button class="btn" style="padding:4px 8px;font-size:11px;" data-action="toggle-archive-category" data-id="' + c.id + '">' + (c.archived ? "Unarchive" : "Archive") + "</button></td>" +
+        '<td><button class="btn" style="padding:4px 8px;font-size:11px;" data-action="toggle-archive-category" data-id="' + c.id + '">' + (c.archived ? "Unarchive" : "Archive") + "</button> " +
+        '<button class="icon-btn" data-action="delete-category" data-id="' + c.id + '" title="Delete category">✕</button></td>' +
         "</tr>";
     }).join("");
     const addRow = '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New category name" id="newCategoryName"></td>' +
@@ -810,9 +819,8 @@
       if (action === "add-account") {
         const name = document.getElementById("newAccountName").value.trim();
         if (!name) { toast("Enter a name for the new account."); return; }
-        const type = document.getElementById("newAccountType").value;
         const opening = parseFloat(document.getElementById("newAccountOpening").value) || 0;
-        tracker().accounts.push({ id: uid("acct"), name, type, openingBalance: opening });
+        tracker().accounts.push({ id: uid("acct"), name, openingBalance: opening });
         persist();
         renderAll();
         return;
@@ -893,6 +901,20 @@
         const c = findCategory(actionEl.dataset.id);
         if (!c) return;
         c.archived = !c.archived;
+        persist();
+        renderCategoriesModal();
+        return;
+      }
+      if (action === "delete-category") {
+        const id = actionEl.dataset.id;
+        const hasChildren = tracker().categories.some((c) => c.parentId === id);
+        if (hasChildren) { toast("This category has sub-categories under it — move or delete those first."); return; }
+        const inUse = tracker().transactions.some((t) => t.categoryId === id);
+        if (inUse) { toast("Can't delete a category with transactions — archive it instead, or move/delete those transactions first."); return; }
+        const ok = await confirmDialog("Delete category?", "This removes the category.", "Delete", "Cancel", true);
+        if (!ok) return;
+        tracker().categories = tracker().categories.filter((c) => c.id !== id);
+        delete tracker().budgets[id];
         persist();
         renderCategoriesModal();
         return;
