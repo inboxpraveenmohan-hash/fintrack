@@ -298,7 +298,6 @@
     const d = computeDerivedTracker();
     renderMonthLabel();
     renderAccounts(d);
-    renderTransfers(d);
     renderStats(d);
     renderBudget(d);
     renderCharts(d);
@@ -351,8 +350,10 @@
     document.getElementById("accountsBody").innerHTML = rows;
   }
 
-  function renderTransfers(d) {
-    let rows = d.monthTransfers.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).map((t) => {
+  // Shows every transfer (not scoped to the selected month) — this renders into the Manage
+  // Transfers modal, on demand when it's opened, the same way renderCategoriesModal() does.
+  function renderTransfers() {
+    let rows = tracker().transfers.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).map((t) => {
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="transfer" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
         '<td class="left"><input class="cell-input name-input" data-type="transfer" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
@@ -362,7 +363,7 @@
         '<td><button class="icon-btn" data-action="delete-transfer" data-id="' + t.id + '" title="Delete transfer">✕</button></td>' +
         "</tr>";
     }).join("");
-    if (!rows) rows = '<tr><td colspan="6" class="empty-msg">No transfers this month.</td></tr>';
+    if (!rows) rows = '<tr><td colspan="6" class="empty-msg">No transfers yet.</td></tr>';
     const firstAcct = tracker().accounts[0];
     const secondAcct = tracker().accounts[1] || firstAcct;
     rows += '<tr class="add-row">' +
@@ -535,14 +536,25 @@
   }
 
   // ---------- CSV / Excel import-export ----------
-  const HEADER_ORDER = ["Date", "Item", "Income", "Expense", "Account", "Category"];
+  // "Items" (plural) matches real-world daily-tracker sheets; "Item" is still accepted on
+  // import for anything exported by an earlier version of this app.
+  const HEADER_ORDER = ["Date", "Items", "Income", "Expense", "Account", "Category"];
+
+  // Spreadsheet amounts are often formatted as currency ("₹254.87", "₹3,683.00"), which
+  // parseFloat can't handle at all (it returns NaN at the very first non-numeric character) —
+  // strip everything except digits/decimal point/minus sign before parsing.
+  function parseAmount(v) {
+    if (v === "" || v === null || v === undefined) return 0;
+    const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  }
 
   function toRows(dt) {
     const rows = dt.transactions.map((t) => {
       const cat = findCategory(t.categoryId);
       const acct = findAccount(t.accountId);
       return {
-        Date: t.date, Item: t.item,
+        Date: t.date, Items: t.item,
         Income: t.direction === "in" ? t.amount : "",
         Expense: t.direction === "out" ? t.amount : "",
         Account: acct ? acct.name : "",
@@ -553,7 +565,7 @@
       const from = findAccount(t.fromAccountId);
       const to = findAccount(t.toAccountId);
       rows.push({
-        Date: t.date, Item: t.item, Income: "", Expense: t.amount,
+        Date: t.date, Items: t.item, Income: "", Expense: t.amount,
         Account: from ? from.name : "", Category: "Transfer to " + (to ? to.name : "?")
       });
     });
@@ -588,14 +600,14 @@
       }
       if (!iso) return; // unparseable date — skip the row rather than throw
 
-      const income = parseFloat(r.Income) || 0;
-      const expense = parseFloat(r.Expense) || 0;
+      const income = parseAmount(r.Income);
+      const expense = parseAmount(r.Expense);
       const amount = income || expense;
       if (!amount) return;
       const direction = income ? "in" : "out";
 
-      const item = String(r.Item || "").trim();
-      const catName = String(r.Category || "Uncategorized").trim();
+      const item = String((r.Items !== undefined ? r.Items : r.Item) || "").trim();
+      const catName = String(r.Category || "Uncategorized").trim().replace(/\s+/g, " ");
       let cat = catByName[catName.toLowerCase()];
       if (!cat) {
         const parent = direction === "in" ? incomeGroup : expenseGroup;
@@ -720,6 +732,14 @@
       renderAll(); // category name/parent/archive changes affect budget/chart/transaction rendering
     });
 
+    document.getElementById("btnManageTransfers").addEventListener("click", () => {
+      renderTransfers();
+      document.getElementById("transfersBackdrop").classList.add("show");
+    });
+    document.getElementById("transfersClose").addEventListener("click", () => {
+      document.getElementById("transfersBackdrop").classList.remove("show");
+    });
+
     document.getElementById("txnSearch").addEventListener("input", (e) => {
       searchQuery = e.target.value;
       renderTransactions(computeDerivedTracker());
@@ -755,7 +775,8 @@
         if (!tr) return;
         tr[field] = val;
         persist();
-        renderAll();
+        renderAll(); // transfers affect account balances, shown outside the modal
+        renderTransfers(); // refresh the modal's own table without closing it
       } else if (type === "category") {
         const c = findCategory(id);
         if (!c) return;
@@ -837,6 +858,7 @@
         tracker().transfers.push({ id: uid("tr"), date, item, amount, fromAccountId, toAccountId });
         persist();
         renderAll();
+        renderTransfers();
         toast("Transfer added.");
         return;
       }
@@ -846,6 +868,7 @@
         tracker().transfers = tracker().transfers.filter((t) => t.id !== actionEl.dataset.id);
         persist();
         renderAll();
+        renderTransfers();
         return;
       }
 

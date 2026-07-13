@@ -558,6 +558,15 @@
     return rows;
   }
 
+  // Spreadsheet amounts are often formatted as currency ("₹1,20,000.00"), which parseFloat
+  // can't handle at all (it returns NaN at the very first non-numeric character) — strip
+  // everything except digits/decimal point/minus sign before parsing.
+  function parseAmount(v) {
+    if (v === "" || v === null || v === undefined) return 0;
+    const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  }
+
   function parseRows(rows) {
     const data = emptyData();
     const classMap = {};
@@ -568,19 +577,19 @@
       if (section === "AssetClass") {
         const name = String(r.Name || "").trim();
         if (!name) return;
-        const targetPct = parseFloat(r.TargetPct) || 0;
-        const ac = { id: uid("ac"), name, targetPct, manualSipPct: r.ManualSipPct !== "" && r.ManualSipPct != null ? (parseFloat(r.ManualSipPct) || 0) : targetPct, holdings: [] };
+        const targetPct = parseAmount(r.TargetPct);
+        const ac = { id: uid("ac"), name, targetPct, manualSipPct: r.ManualSipPct !== "" && r.ManualSipPct != null ? parseAmount(r.ManualSipPct) : targetPct, holdings: [] };
         data.assetClasses.push(ac);
         classMap[name] = ac;
       } else if (section === "OtherGroup") {
         const name = String(r.Name || "").trim();
         if (!name) return;
-        const og = { id: uid("o"), name, monthlyContribution: parseFloat(r.MonthlyContribution) || 0, holdings: [] };
+        const og = { id: uid("o"), name, monthlyContribution: parseAmount(r.MonthlyContribution), holdings: [] };
         data.otherAssets.push(og);
         otherGroupMap[name] = og;
       } else if (section === "Meta") {
         const name = String(r.Name || "").trim();
-        if (name === "MonthlyInvestment") data.monthlyInvestment = parseFloat(r.CurrentValue) || 0;
+        if (name === "MonthlyInvestment") data.monthlyInvestment = parseAmount(r.CurrentValue);
         if (name === "Updated" && r.CurrentValue) data.updated = String(r.CurrentValue).trim();
         if (name === "SipMode" && ["target", "deviation", "manual"].includes(String(r.CurrentValue).trim())) data.sipMode = String(r.CurrentValue).trim();
       }
@@ -598,7 +607,7 @@
           data.assetClasses.push(ac);
           classMap[parentName] = ac;
         }
-        ac.holdings.push({ id: uid("h"), name, currentValue: parseFloat(r.CurrentValue) || 0, sipPct: parseFloat(r.SIPPct) || 0, isin: String(r.ISIN || "").trim() || null });
+        ac.holdings.push({ id: uid("h"), name, currentValue: parseAmount(r.CurrentValue), sipPct: parseAmount(r.SIPPct), isin: String(r.ISIN || "").trim() || null });
       } else if (section === "OtherHolding") {
         const name = String(r.Name || "").trim();
         if (!name) return;
@@ -609,11 +618,11 @@
           data.otherAssets.push(og);
           otherGroupMap[parentName] = og;
         }
-        og.holdings.push({ id: uid("oh"), name, currentValue: parseFloat(r.CurrentValue) || 0, isin: String(r.ISIN || "").trim() || null });
+        og.holdings.push({ id: uid("oh"), name, currentValue: parseAmount(r.CurrentValue), isin: String(r.ISIN || "").trim() || null });
       } else if (section === "Other") {
         const name = String(r.Name || "").trim();
         if (!name) return;
-        data.otherAssets.push({ id: uid("o"), name, currentValue: parseFloat(r.CurrentValue) || 0, monthlyContribution: parseFloat(r.MonthlyContribution) || 0 });
+        data.otherAssets.push({ id: uid("o"), name, currentValue: parseAmount(r.CurrentValue), monthlyContribution: parseAmount(r.MonthlyContribution) });
       }
     });
 

@@ -25,8 +25,8 @@
   .budget-bar-fill.over{background:var(--red);}
   .month-switch{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;font-weight:600;}
   .month-switch .icon-btn{font-size:16px;}
-  .categories-modal{max-height:85vh;display:flex;flex-direction:column;}
-  .categories-modal .table-scroll{overflow-y:auto;flex:1;margin-top:6px;}
+  .scroll-modal{max-height:85vh;display:flex;flex-direction:column;}
+  .scroll-modal .table-scroll{overflow-y:auto;flex:1;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -60,51 +60,11 @@
     <button class="btn" id="btnExportCsv">Export CSV</button>
     <button class="btn" id="btnExportXlsx">Export Excel</button>
     <button class="btn" id="btnManageCategories">Manage Categories</button>
+    <button class="btn" id="btnManageTransfers">Manage Transfers</button>
     <div class="month-switch">
       <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
       <span id="monthLabel"></span>
       <button class="icon-btn" data-action="next-month" title="Next month">▶</button>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-head">
-      <h2>Accounts</h2>
-    </div>
-    <div class="table-scroll">
-      <table id="accountsTable">
-        <thead>
-          <tr>
-            <th class="left">Name</th>
-            <th>Type</th>
-            <th>Opening Balance</th>
-            <th>Current Balance</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="accountsBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-head">
-      <h2>Transfers <span style="font-weight:400;color:var(--muted);font-size:12px;">(moving money between your own accounts — e.g. paying a credit card bill — not income or spending)</span></h2>
-    </div>
-    <div class="table-scroll">
-      <table id="transferTable">
-        <thead>
-          <tr>
-            <th class="left">Date</th>
-            <th class="left">Item</th>
-            <th class="left">From</th>
-            <th class="left">To</th>
-            <th>Amount</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="transferBody"></tbody>
-      </table>
     </div>
   </div>
 
@@ -136,6 +96,26 @@
           </tr>
         </thead>
         <tbody id="budgetBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Accounts</h2>
+    </div>
+    <div class="table-scroll">
+      <table id="accountsTable">
+        <thead>
+          <tr>
+            <th class="left">Name</th>
+            <th>Type</th>
+            <th>Opening Balance</th>
+            <th>Current Balance</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="accountsBody"></tbody>
       </table>
     </div>
   </div>
@@ -183,7 +163,7 @@
 </div>
 
 <div class="modal-backdrop" id="categoriesBackdrop">
-  <div class="modal categories-modal" style="max-width:560px;">
+  <div class="modal scroll-modal" style="max-width:560px;">
     <h3>Manage Categories</h3>
     <p>Rename, regroup, or archive categories. A category with no parent is itself a top-level group (used for the "By Top-Level Category" chart). Archiving keeps history for past transactions but hides it from new-transaction pickers.</p>
     <div class="table-scroll">
@@ -200,6 +180,31 @@
     </div>
     <div class="modal-actions">
       <button class="btn" id="categoriesClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="transfersBackdrop">
+  <div class="modal scroll-modal" style="max-width:640px;">
+    <h3>Manage Transfers</h3>
+    <p>Moving money between your own accounts — e.g. paying a credit card bill — isn't income or spending, so it's tracked separately here rather than in the transaction log. Shows every transfer, not just this month's.</p>
+    <div class="table-scroll">
+      <table id="transferTable">
+        <thead>
+          <tr>
+            <th class="left">Date</th>
+            <th class="left">Item</th>
+            <th class="left">From</th>
+            <th class="left">To</th>
+            <th>Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="transferBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="transfersClose">Done</button>
     </div>
   </div>
 </div>
