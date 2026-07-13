@@ -9,54 +9,10 @@
   const DEVIATION_THRESHOLD = 2; // percentage points before flagging "off target"
   const PALETTE = ["#4f46e5", "#0ea5a4", "#f59e0b", "#ef4444", "#8b5cf6", "#0f9d58", "#0284c7", "#d946ef", "#84cc16", "#f97316"];
 
-  // ---------- theme (light / dark / system) ----------
-  const THEME_KEY = "fintrack_theme";
-  const THEME_COLORS = { light: "#4338ca", dark: "#9089f5" };
-  const THEME_ICONS = { system: "🌓", light: "☀️", dark: "🌙" };
-  const THEME_LABELS = { system: "Match system", light: "Light", dark: "Dark" };
-
-  function safeGetTheme() { try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; } }
-  function safeSetTheme(v) { try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* ignore */ } }
-
-  function resolvedTheme(pref) {
-    if (pref === "light" || pref === "dark") return pref;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
-  function applyTheme(pref) {
-    const root = document.documentElement;
-    if (pref === "light" || pref === "dark") root.setAttribute("data-theme", pref);
-    else root.removeAttribute("data-theme");
-
-    const meta = document.getElementById("themeColorMeta");
-    if (meta) meta.setAttribute("content", THEME_COLORS[resolvedTheme(pref)]);
-
-    const btn = document.getElementById("btnThemeToggle");
-    if (btn) {
-      btn.textContent = THEME_ICONS[pref];
-      btn.title = "Theme: " + THEME_LABELS[pref] + " (click to change)";
-    }
-    // Chart.js bakes colors in at creation time, so it needs an explicit redraw on theme change —
-    // everything else on the page updates for free via CSS custom properties.
-    if (typeof renderCharts === "function") renderCharts(computeDerived(state));
-  }
-
-  function cycleTheme() {
-    const order = ["system", "light", "dark"];
-    const current = safeGetTheme() || "system";
-    const next = order[(order.indexOf(current) + 1) % order.length];
-    safeSetTheme(next);
-    applyTheme(next);
-  }
-
-  function initTheme() {
-    applyTheme(safeGetTheme() || "system");
-    if (window.matchMedia) {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-        if ((safeGetTheme() || "system") === "system") applyTheme("system");
-      });
-    }
-  }
+  // Theme toggle logic lives in theme.js (shared with tracker.html). It calls
+  // window.onThemeChange after every change, since Chart.js bakes colors in at creation time
+  // and needs an explicit redraw — everything else updates for free via CSS custom properties.
+  window.onThemeChange = () => { if (typeof renderCharts === "function") renderCharts(computeDerived(state)); };
 
   let idCounter = 0;
   function uid(prefix) {
@@ -163,7 +119,15 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return seedData();
       const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.assetClasses)) return seedData();
+      if (!parsed || typeof parsed !== "object") return seedData();
+      // Repair only the keys this page owns — never discard unrelated top-level keys (e.g. a
+      // dailyTracker object written by tracker.html) just because portfolio data is missing/corrupt.
+      const seed = seedData();
+      if (!Array.isArray(parsed.assetClasses)) parsed.assetClasses = seed.assetClasses;
+      if (!Array.isArray(parsed.otherAssets)) parsed.otherAssets = seed.otherAssets;
+      if (typeof parsed.monthlyInvestment !== "number") parsed.monthlyInvestment = seed.monthlyInvestment;
+      if (!parsed.sipMode) parsed.sipMode = seed.sipMode;
+      if (!parsed.updated) parsed.updated = seed.updated;
       return parsed;
     } catch (e) {
       return seedData();
@@ -700,7 +664,9 @@
     const isCsv = /\.csv$/i.test(file.name);
     reader.onload = async (e) => {
       try {
-        const workbook = isCsv ? XLSX.read(e.target.result, { type: "string" }) : XLSX.read(e.target.result, { type: "array" });
+        // raw: true stops SheetJS from auto-detecting date-like cells (e.g. the Updated field,
+        // if a spreadsheet editor reformats it) as US MM/DD/YYYY and silently misreading them.
+        const workbook = isCsv ? XLSX.read(e.target.result, { type: "string", raw: true }) : XLSX.read(e.target.result, { type: "array", raw: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         const parsed = parseRows(rows);
@@ -710,7 +676,9 @@
         }
         const ok = await confirmDialog("Import portfolio?", "This will replace your current portfolio data with the contents of \"" + file.name + "\". Consider exporting a backup first.");
         if (!ok) return;
+        const preservedTracker = state.dailyTracker;
         state = parsed;
+        if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
         expanded = new Set();
         persist();
         renderAll();
@@ -1054,9 +1022,6 @@
       toast("Moved \"Bonds\" out of Asset Allocation into Other Assets — it no longer affects target %/deviation.");
     }
 
-    initTheme();
-    document.getElementById("btnThemeToggle").addEventListener("click", cycleTheme);
-
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
       const file = e.target.files[0];
@@ -1101,7 +1066,9 @@
     document.getElementById("btnSample").addEventListener("click", async () => {
       const ok = await confirmDialog("Load sample portfolio?", "This replaces your current data with the sample portfolio (matching the reference sheet). Export a backup first if needed.");
       if (!ok) return;
+      const preservedTracker = state.dailyTracker;
       state = seedData();
+      if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
       expanded = new Set();
       persist();
       renderAll();
@@ -1111,7 +1078,9 @@
     document.getElementById("btnReset").addEventListener("click", async () => {
       const ok = await confirmDialog("Reset all data?", "This permanently clears all asset classes, holdings and other assets. This cannot be undone.");
       if (!ok) return;
+      const preservedTracker = state.dailyTracker;
       state = emptyData();
+      if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
       expanded = new Set();
       persist();
       renderAll();

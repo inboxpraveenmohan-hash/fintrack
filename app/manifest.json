@@ -1,7 +1,7 @@
 {
   "name": "FinTrack — Portfolio Manager",
   "short_name": "FinTrack",
-  "description": "Portable, offline-first investment portfolio dashboard with optional Google Drive sync.",
+  "description": "Portable, offline-first personal finance app — investment portfolio tracking and daily expense/budget tracking, with optional Google Drive sync.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

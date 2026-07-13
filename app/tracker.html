@@ -12,25 +12,21 @@
   })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FinTrack — Portfolio Manager</title>
+<title>FinTrack — Daily Tracker</title>
 <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIyMSIgZmlsbD0iIzFjMjMzMyIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjM4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS1vcGFjaXR5PSIwLjUiIHN0cm9rZS13aWR0aD0iNCIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI4MDAiIGZvbnQtc2l6ZT0iMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmZmZmYiPkZUPC90ZXh0Pjwvc3ZnPg==">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4338ca" id="themeColorMeta">
 <link rel="stylesheet" href="shared.css">
 <style>
-  /* Page-specific: CDSL statement sync modal (only this page has this feature) */
-  .cdsl-modal{max-width:760px;max-height:85vh;display:flex;flex-direction:column;}
-  #cdslModalBody{overflow-y:auto;flex:1;margin-top:6px;}
-  .cdsl-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:16px 0 8px;}
-  .cdsl-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--row-line);font-size:13px;}
-  .cdsl-row .cdsl-name{flex:1;min-width:0;}
-  .cdsl-row .cdsl-name .primary{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cdsl-row .cdsl-name .secondary{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cdsl-row .cdsl-value{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;min-width:150px;}
-  .cdsl-row select, .cdsl-row input.cdsl-newclass{border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;}
-  .cdsl-empty{color:var(--muted);font-size:13px;padding:10px 4px;}
-  .cdsl-unchanged{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;}
+  /* Page-specific: budget progress bars, and the transfer-only "to account" picker */
+  .budget-bar-track{width:100%;height:5px;border-radius:3px;background:var(--row-line);margin-top:6px;overflow:hidden;}
+  .budget-bar-fill{height:100%;border-radius:3px;background:var(--primary);}
+  .budget-bar-fill.over{background:var(--red);}
+  .month-switch{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;font-weight:600;}
+  .month-switch .icon-btn{font-size:16px;}
+  .to-account-cell{display:none;}
+  .to-account-cell.show{display:table-cell;}
 </style>
 </head>
 <body>
@@ -40,13 +36,13 @@
     <div class="brand">
       <img class="logo" alt="" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIyMSIgZmlsbD0iIzFjMjMzMyIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjM4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS1vcGFjaXR5PSIwLjUiIHN0cm9rZS13aWR0aD0iNCIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI4MDAiIGZvbnQtc2l6ZT0iMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmZmZmYiPkZUPC90ZXh0Pjwvc3ZnPg==">
       <div>
-        <h1>FinTrack — Portfolio Manager</h1>
-        <div class="sub">Portable investment dashboard</div>
+        <h1>FinTrack — Daily Tracker</h1>
+        <div class="sub" id="monthSubtitle">&nbsp;</div>
       </div>
     </div>
     <nav class="tabs">
-      <a class="tab-link active" href="index.html">Portfolio</a>
-      <a class="tab-link" href="tracker.html">Daily Tracker</a>
+      <a class="tab-link" href="index.html">Portfolio</a>
+      <a class="tab-link active" href="tracker.html">Daily Tracker</a>
     </nav>
     <div class="header-right">
       <button class="btn theme-toggle" id="btnThemeToggle" title="Theme"></button>
@@ -63,83 +59,84 @@
     <button class="btn" id="btnTemplate">Download Template</button>
     <button class="btn" id="btnExportCsv">Export CSV</button>
     <button class="btn" id="btnExportXlsx">Export Excel</button>
-    <button class="btn primary" id="btnCdsl">Sync from CDSL Statement</button>
-    <input type="file" id="cdslFileInput" accept=".csv,.txt">
-    <button class="btn" id="btnSample">Load Sample Portfolio</button>
-    <button class="btn danger" id="btnReset">Reset All Data</button>
-  </div>
-
-  <div class="stats" id="statCards"></div>
-
-  <div class="charts">
-    <div class="chart-card">
-      <h3>Target vs Current Allocation (%)</h3>
-      <div class="canvas-box"><canvas id="chartAllocation"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <h3>Net Worth Composition</h3>
-      <div class="canvas-box"><canvas id="chartNetWorth"></canvas></div>
+    <button class="btn" id="btnManageCategories">Manage Categories</button>
+    <div class="month-switch">
+      <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
+      <span id="monthLabel"></span>
+      <button class="icon-btn" data-action="next-month" title="Next month">▶</button>
     </div>
   </div>
 
   <div class="section">
     <div class="section-head">
-      <h2>Asset Allocation</h2>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span class="badge" id="monthlyInvestBadge"></span>
-        <span class="badge" id="targetSumBadge"></span>
-        <span class="badge" id="sipSumBadge" style="display:none;"></span>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">
-          SIP split:
-          <select id="sipModeSelect" class="cell-input" style="width:auto;padding:5px 8px;" data-type="meta" data-field="sipMode">
-            <option value="target">Same as Target %</option>
-            <option value="deviation">Deviation-weighted</option>
-            <option value="manual">Manual</option>
-          </select>
-        </label>
-        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="expand-all-classes">Expand All</button>
-        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="collapse-all-classes">Collapse All</button>
-      </div>
+      <h2>Accounts</h2>
     </div>
     <div class="table-scroll">
-      <table id="allocationTable">
+      <table id="accountsTable">
         <thead>
           <tr>
-            <th class="left">Asset Class / Holding</th>
-            <th>Target %</th>
-            <th>Target Amount</th>
-            <th>Current Value</th>
-            <th>Current %</th>
-            <th>Deviation</th>
-            <th>Correction</th>
-            <th>Monthly SIP</th>
+            <th class="left">Name</th>
+            <th>Type</th>
+            <th>Opening Balance</th>
+            <th>Current Balance</th>
             <th></th>
           </tr>
         </thead>
-        <tbody id="allocationBody"></tbody>
+        <tbody id="accountsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="stats" id="statCards"></div>
+
+  <div class="chart-card" style="margin-bottom:20px;">
+    <h3>Spending by Category — <span id="donutMonthLabel"></span></h3>
+    <div class="canvas-box"><canvas id="chartCategory"></canvas></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Budget vs Actual <span style="font-weight:400;color:var(--muted);font-size:12px;">(recurring monthly budgets, expense categories only)</span></h2>
+    </div>
+    <div class="table-scroll">
+      <table id="budgetTable">
+        <thead>
+          <tr>
+            <th class="left">Category</th>
+            <th>Budget</th>
+            <th>Actual</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="budgetBody"></tbody>
       </table>
     </div>
   </div>
 
   <div class="section">
     <div class="section-head">
-      <h2>Other Assets <span style="font-weight:400;color:var(--muted);font-size:12px;">(Part of Net Worth, outside the asset class allocation)</span></h2>
+      <h2>Transaction Log</h2>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="expand-all-other">Expand All</button>
-        <button class="btn" style="padding:5px 10px;font-size:11px;" data-action="collapse-all-other">Collapse All</button>
+        <input class="cell-input" style="width:160px;" id="txnSearch" placeholder="Search transactions…">
+        <select class="cell-input" id="txnFilterCategory" style="width:auto;">
+          <option value="">All categories</option>
+        </select>
       </div>
     </div>
     <div class="table-scroll">
-      <table id="otherTable">
+      <table id="txnTable">
         <thead>
           <tr>
-            <th class="left">Name</th>
-            <th>Current Value</th>
-            <th>Monthly Contribution</th>
+            <th class="left">Date</th>
+            <th class="left">Item</th>
+            <th class="left">Category</th>
+            <th class="left">Account</th>
+            <th class="left to-account-cell" id="toAccountHeader">To Account</th>
+            <th>Amount</th>
             <th></th>
           </tr>
         </thead>
-        <tbody id="otherBody"></tbody>
+        <tbody id="txnBody"></tbody>
       </table>
     </div>
   </div>
@@ -158,14 +155,24 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="cdslBackdrop">
-  <div class="modal cdsl-modal">
-    <h3>Sync from CDSL Statement</h3>
-    <p>Review the matches below, then apply. Only checked rows are changed — nothing is applied until you click Apply.</p>
-    <div id="cdslModalBody"></div>
+<div class="modal-backdrop" id="categoriesBackdrop">
+  <div class="modal" style="max-width:560px;">
+    <h3>Manage Categories</h3>
+    <p>Rename, retype, or archive categories. Archiving keeps history for past transactions but hides it from new-transaction pickers.</p>
+    <div class="table-scroll">
+      <table id="categoriesTable">
+        <thead>
+          <tr>
+            <th class="left">Name</th>
+            <th class="left">Type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="categoriesBody"></tbody>
+      </table>
+    </div>
     <div class="modal-actions">
-      <button class="btn" id="cdslCancel">Cancel</button>
-      <button class="btn primary" id="cdslApply">Apply Selected</button>
+      <button class="btn" id="categoriesClose">Done</button>
     </div>
   </div>
 </div>
@@ -175,7 +182,7 @@
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/chart.umd.min.js"></script>
 <script src="theme.js"></script>
-<script src="app.js"></script>
+<script src="tracker.js"></script>
 <!-- Optional cloud sync: needs live internet access to Google, so it's the one thing in this
      app not vendored locally. If it fails to load (offline, blocked, or opened via file://),
      the app above already works fully offline on its own — this is purely additive. -->

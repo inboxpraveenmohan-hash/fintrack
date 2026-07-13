@@ -8,8 +8,11 @@
    offline. Library files (lib/*) rarely change, so they stay cache-first to avoid
    re-downloading them every load. */
 
-const CACHE_NAME = "fintrack-shell-v4";
-const APP_FILES = ["./", "./index.html", "./app.js", "./drive-sync.js", "./manifest.json"];
+const CACHE_NAME = "fintrack-shell-v5";
+const APP_FILES = [
+  "./", "./index.html", "./app.js", "./tracker.html", "./tracker.js",
+  "./shared.css", "./theme.js", "./drive-sync.js", "./manifest.json"
+];
 const LIB_FILES = ["./lib/xlsx.full.min.js", "./lib/chart.umd.min.js", "./apple-touch-icon.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
