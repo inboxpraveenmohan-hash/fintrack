@@ -138,6 +138,7 @@
   let selectedMonth = todayStr().slice(0, 7);
   let searchQuery = "";
   let filterCategoryId = "";
+  let sortOrder = "newest"; // "newest" | "oldest"
   let chartTopLevel = null;
   let chartCategory = null;
 
@@ -278,6 +279,8 @@
         spendBySub[cat.id] = (spendBySub[cat.id] || 0) + t.amount;
       }
     });
+    // Every non-archived leaf category is listed, even with zero spend and no budget yet —
+    // otherwise there'd be no row to type a budget into before you've spent anything in it.
     const budgetRows = tracker().categories
       .filter((c) => !c.archived && isLeafCategory(c))
       .map((c) => {
@@ -285,8 +288,7 @@
         const budget = numOr0(tracker().budgets[c.id]);
         const pct = budget > 0 ? (actual / budget) * 100 : (actual > 0 ? 100 : 0);
         return { category: c, actual, budget, pct };
-      })
-      .filter((row) => row.actual > 0 || row.budget > 0);
+      });
     return {
       monthTxns, monthTransfers, totalIncome, totalExpense, net: totalIncome - totalExpense,
       txnCount: monthTxns.length, spendByTopLevel, spendBySub, budgetRows, balances: computeAccountBalances()
@@ -388,7 +390,7 @@
 
   function renderBudget(d) {
     if (d.budgetRows.length === 0) {
-      document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No spending recorded or budgeted yet this month.</td></tr>';
+      document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No categories yet — add one via Manage Categories.</td></tr>';
       return;
     }
     document.getElementById("budgetBody").innerHTML = d.budgetRows.map((row, i) => {
@@ -396,7 +398,7 @@
       const over = row.budget > 0 && row.pct > 100;
       return "<tr>" +
         '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
-        '<td><input class="cell-input small" type="number" step="1" data-type="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
+        '<td><input class="cell-input" style="width:90px;" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
         '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
         '<td style="min-width:110px;"><div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div></td>' +
         "</tr>";
@@ -456,14 +458,30 @@
   }
 
   function renderTransactions(d) {
-    let rows = d.monthTxns.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    let rows = d.monthTxns.slice().sort((a, b) => {
+      if (a.date === b.date) return 0;
+      const newerFirst = a.date > b.date ? -1 : 1;
+      return sortOrder === "oldest" ? -newerFirst : newerFirst;
+    });
     if (filterCategoryId) rows = rows.filter((t) => t.categoryId === filterCategoryId);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((t) => t.item.toLowerCase().includes(q));
     }
 
-    let html = rows.map((t) => {
+    const firstCat = tracker().categories.find((c) => isLeafCategory(c) && !c.archived) || tracker().categories.find((c) => !c.parentId);
+    const firstAcct = tracker().accounts[0];
+    let html = '<tr class="add-row">' +
+      '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" id="newTxnDate" value="' + todayStr() + '"></td>' +
+      '<td class="left"><input class="cell-input name-input" placeholder="Item" id="newTxnItem"></td>' +
+      '<td class="left"><select class="cell-input" style="width:170px;" id="newTxnCategory">' + categorySelectOptions(firstCat && firstCat.id) + "</select></td>" +
+      '<td class="left"><select class="cell-input" style="width:110px;" id="newTxnAccount">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
+      '<td><select class="cell-input" style="width:auto;" id="newTxnDirection"><option value="out" selected>Out</option><option value="in">In</option></select></td>' +
+      '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
+      '<td><button class="btn primary" style="padding:5px 10px;font-size:11px;" data-action="add-txn">+ Add</button></td>' +
+      "</tr>";
+
+    const rowsHtml = rows.map((t) => {
       const amtClass = t.direction === "in" ? "neg" : "pos";
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
@@ -479,21 +497,7 @@
         "</tr>";
     }).join("");
 
-    if (!html) {
-      html = '<tr><td colspan="7" class="empty-msg">No transactions ' + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".</td></tr>";
-    }
-
-    const firstCat = tracker().categories.find((c) => isLeafCategory(c) && !c.archived) || tracker().categories.find((c) => !c.parentId);
-    const firstAcct = tracker().accounts[0];
-    html += '<tr class="add-row">' +
-      '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" id="newTxnDate" value="' + todayStr() + '"></td>' +
-      '<td class="left"><input class="cell-input name-input" placeholder="Item" id="newTxnItem"></td>' +
-      '<td class="left"><select class="cell-input" style="width:170px;" id="newTxnCategory">' + categorySelectOptions(firstCat && firstCat.id) + "</select></td>" +
-      '<td class="left"><select class="cell-input" style="width:110px;" id="newTxnAccount">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
-      '<td><select class="cell-input" style="width:auto;" id="newTxnDirection"><option value="out" selected>Out</option><option value="in">In</option></select></td>' +
-      '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
-      '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-txn">+ Add</button></td>' +
-      "</tr>";
+    html += rowsHtml || ('<tr><td colspan="7" class="empty-msg">No transactions ' + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".</td></tr>");
 
     document.getElementById("txnBody").innerHTML = html;
   }
@@ -501,7 +505,7 @@
   function renderTxnFilterOptions() {
     const sel = document.getElementById("txnFilterCategory");
     const current = sel.value;
-    sel.innerHTML = '<option value="">All categories</option>' +
+    sel.innerHTML = '<option value="">All</option>' +
       tracker().categories.map((c) => '<option value="' + c.id + '">' + escapeHtml(c.name) + "</option>").join("");
     sel.value = current;
     filterCategoryId = sel.value;
@@ -746,6 +750,10 @@
     });
     document.getElementById("txnFilterCategory").addEventListener("change", (e) => {
       filterCategoryId = e.target.value;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnSortOrder").addEventListener("change", (e) => {
+      sortOrder = e.target.value;
       renderTransactions(computeDerivedTracker());
     });
 

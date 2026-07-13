@@ -125,8 +125,9 @@
       <h2>Transaction Log</h2>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <input class="cell-input" style="width:160px;" id="txnSearch" placeholder="Search transactions…">
-        <select class="cell-input" id="txnFilterCategory" style="width:auto;">
-          <option value="">All categories</option>
+        <select class="cell-input" id="txnSortOrder" style="width:auto;">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
         </select>
       </div>
     </div>
@@ -136,7 +137,14 @@
           <tr>
             <th class="left">Date</th>
             <th class="left">Item</th>
-            <th class="left">Category</th>
+            <th class="left">
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <span>Category</span>
+                <select class="cell-input" id="txnFilterCategory" style="width:auto;font-size:10px;padding:2px 4px;font-weight:400;text-transform:none;letter-spacing:normal;">
+                  <option value="">All</option>
+                </select>
+              </div>
+            </th>
             <th class="left">Account</th>
             <th>In / Out</th>
             <th>Amount</th>
