@@ -43,19 +43,19 @@
   }
 
   function defaultCategories() {
-    const income = { id: uid("cat"), name: "Income", parentId: null, archived: false };
-    const expense = { id: uid("cat"), name: "Expense", parentId: null, archived: false };
-    const savings = { id: uid("cat"), name: "Savings", parentId: null, archived: false };
-    const mk = (name, parent) => ({ id: uid("cat"), name, parentId: parent.id, archived: false });
+    const income = { id: uid("cat"), name: "Income", parentId: null, archived: false, hasBudget: false };
+    const expense = { id: uid("cat"), name: "Expense", parentId: null, archived: false, hasBudget: false };
+    const savings = { id: uid("cat"), name: "Savings", parentId: null, archived: false, hasBudget: false };
+    const mk = (name, parent, hasBudget) => ({ id: uid("cat"), name, parentId: parent.id, archived: false, hasBudget });
     return [
       income, expense, savings,
-      mk("Groceries", expense), mk("EMI", expense), mk("Dining out", expense),
-      mk("Rent & Maintenance", expense), mk("Meds & Supp", expense), mk("Charges", expense),
-      mk("Entertainment", expense), mk("Food delivery", expense), mk("Transport (Fuel)", expense),
-      mk("Online shopping", expense), mk("Essential Spends", expense), mk("Adhoc", expense),
-      mk("Money lent", expense), mk("Travel", expense),
-      mk("Investments", savings), mk("Emergency Fund", savings), mk("Chit", savings),
-      mk("Paycheck", income), mk("Returns", income), mk("Inv/savings returns", income)
+      mk("Groceries", expense, true), mk("EMI", expense, true), mk("Dining out", expense, true),
+      mk("Rent & Maintenance", expense, true), mk("Meds & Supp", expense, true), mk("Charges", expense, true),
+      mk("Entertainment", expense, true), mk("Food delivery", expense, true), mk("Transport (Fuel)", expense, true),
+      mk("Online shopping", expense, true), mk("Essential Spends", expense, true), mk("Adhoc", expense, true),
+      mk("Money lent", expense, true), mk("Travel", expense, true),
+      mk("Investments", savings, true), mk("Emergency Fund", savings, true), mk("Chit", savings, true),
+      mk("Paycheck", income, false), mk("Returns", income, false), mk("Inv/savings returns", income, false)
     ];
   }
 
@@ -79,7 +79,7 @@
     const groups = {};
     function groupFor(type) {
       const key = groupNames[type] ? type : "expense";
-      if (!groups[key]) groups[key] = { id: uid("cat"), name: groupNames[key], parentId: null, archived: false };
+      if (!groups[key]) groups[key] = { id: uid("cat"), name: groupNames[key], parentId: null, archived: false, hasBudget: false };
       return groups[key];
     }
 
@@ -91,7 +91,7 @@
       if (c.type === "transfer") return; // dropped — its transactions become real transfers below
       const group = groupFor(c.type);
       if (!categories.includes(group)) categories.push(group);
-      categories.push({ id: c.id, name: c.name, parentId: group.id, archived: !!c.archived });
+      categories.push({ id: c.id, name: c.name, parentId: group.id, archived: !!c.archived, hasBudget: c.type !== "income" });
     });
 
     const transactions = [];
@@ -266,11 +266,13 @@
     let totalExpense = 0;
     const spendByTopLevel = {};
     const spendBySub = {};
+    const incomeBySub = {};
     monthTxns.forEach((t) => {
       const cat = findCategory(t.categoryId);
       if (!cat) return;
       if (t.direction === "in") {
         totalIncome += t.amount;
+        incomeBySub[cat.id] = (incomeBySub[cat.id] || 0) + t.amount; // always a plain, non-negative sum
       } else {
         totalExpense += t.amount;
         const top = topLevelOf(cat);
@@ -278,19 +280,23 @@
         spendBySub[cat.id] = (spendBySub[cat.id] || 0) + t.amount;
       }
     });
-    // Every non-archived leaf category is listed, even with zero spend and no budget yet —
+    // Every non-archived leaf category is listed, even with zero activity and no budget yet —
     // otherwise there'd be no row to type a budget into before you've spent anything in it.
+    // Categories with budgeting turned off (Manage Categories) — typically income ones — show
+    // their income total instead, with no budget/bar, since a budget target doesn't apply to them.
     const budgetRows = tracker().categories
       .filter((c) => !c.archived && isLeafCategory(c))
       .map((c) => {
-        const actual = spendBySub[c.id] || 0;
-        const budget = numOr0(tracker().budgets[c.id]);
-        const pct = budget > 0 ? (actual / budget) * 100 : (actual > 0 ? 100 : 0);
-        return { category: c, actual, budget, pct };
-      });
+        const hasBudget = c.hasBudget !== false;
+        const actual = hasBudget ? (spendBySub[c.id] || 0) : (incomeBySub[c.id] || 0);
+        const budget = hasBudget ? numOr0(tracker().budgets[c.id]) : 0;
+        const pct = hasBudget && budget > 0 ? (actual / budget) * 100 : (hasBudget && actual > 0 ? 100 : 0);
+        return { category: c, hasBudget, actual, budget, pct };
+      })
+      .sort((a, b) => (b.hasBudget ? 1 : 0) - (a.hasBudget ? 1 : 0));
     return {
       monthTxns, monthTransfers, totalIncome, totalExpense, net: totalIncome - totalExpense,
-      txnCount: monthTxns.length, spendByTopLevel, spendBySub, budgetRows, balances: computeAccountBalances()
+      txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetRows, balances: computeAccountBalances()
     };
   }
 
@@ -383,12 +389,18 @@
     }
     document.getElementById("budgetBody").innerHTML = d.budgetRows.map((row, i) => {
       const barPct = Math.min(row.pct, 100);
-      const over = row.budget > 0 && row.pct > 100;
+      const over = row.hasBudget && row.budget > 0 && row.pct > 100;
+      const budgetCell = row.hasBudget
+        ? '<input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '">'
+        : '<span class="hint">— no budget —</span>';
+      const barCell = row.hasBudget
+        ? '<div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div>'
+        : "";
       return "<tr>" +
         '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
-        '<td><input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
+        "<td>" + budgetCell + "</td>" +
         '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
-        '<td style="min-width:110px;"><div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div></td>' +
+        '<td style="min-width:110px;">' + barCell + "</td>" +
         "</tr>";
     }).join("");
   }
@@ -531,12 +543,14 @@
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="category" data-id="' + c.id + '" data-field="name" value="' + escapeAttr(c.name) + '"' + (c.archived ? ' style="opacity:.5;"' : "") + "></td>" +
         '<td class="left"><select class="cell-input" style="width:auto;" data-type="category" data-id="' + c.id + '" data-field="parentId">' + parentSelectOptions(tracker().categories, c.parentId, c.id) + "</select></td>" +
+        '<td><input type="checkbox" data-type="category" data-id="' + c.id + '" data-field="hasBudget"' + (c.hasBudget !== false ? " checked" : "") + "></td>" +
         '<td><button class="btn" style="padding:4px 8px;font-size:11px;" data-action="toggle-archive-category" data-id="' + c.id + '">' + (c.archived ? "Unarchive" : "Archive") + "</button> " +
         '<button class="icon-btn" data-action="delete-category" data-id="' + c.id + '" title="Delete category">✕</button></td>' +
         "</tr>";
     }).join("");
     const addRow = '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New category name" id="newCategoryName"></td>' +
       '<td class="left"><select class="cell-input" style="width:auto;" id="newCategoryParent">' + parentSelectOptions(tracker().categories, null, null) + "</select></td>" +
+      '<td><input type="checkbox" id="newCategoryHasBudget" checked></td>' +
       '<td><button class="btn primary" style="padding:4px 8px;font-size:11px;" data-action="add-category">+ Add</button></td></tr>';
     document.getElementById("categoriesBody").innerHTML = rows + addRow;
   }
@@ -624,7 +638,7 @@
       let cat = catByName[catName.toLowerCase()];
       if (!cat) {
         const parent = direction === "in" ? incomeGroup : expenseGroup;
-        cat = { id: uid("cat"), name: catName, parentId: parent ? parent.id : null, archived: false };
+        cat = { id: uid("cat"), name: catName, parentId: parent ? parent.id : null, archived: false, hasBudget: direction === "out" };
         dt.categories.push(cat);
         catByName[catName.toLowerCase()] = cat;
       }
@@ -782,7 +796,8 @@
       const id = t.dataset.id;
       const field = t.dataset.field;
       const numericFields = ["openingBalance", "amount"];
-      const val = numericFields.includes(field) ? (parseFloat(t.value) || 0) : t.value;
+      const checkboxFields = ["hasBudget"];
+      const val = numericFields.includes(field) ? (parseFloat(t.value) || 0) : checkboxFields.includes(field) ? t.checked : t.value;
 
       if (type === "account") {
         const a = findAccount(id);
@@ -901,7 +916,8 @@
         const name = document.getElementById("newCategoryName").value.trim();
         if (!name) { toast("Enter a name for the new category."); return; }
         const parentId = document.getElementById("newCategoryParent").value || null;
-        tracker().categories.push({ id: uid("cat"), name, parentId, archived: false });
+        const hasBudget = document.getElementById("newCategoryHasBudget").checked;
+        tracker().categories.push({ id: uid("cat"), name, parentId, archived: false, hasBudget });
         persist();
         renderCategoriesModal();
         return;
