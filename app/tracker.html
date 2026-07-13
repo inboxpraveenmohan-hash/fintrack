@@ -19,14 +19,14 @@
 <meta name="theme-color" content="#4338ca" id="themeColorMeta">
 <link rel="stylesheet" href="shared.css">
 <style>
-  /* Page-specific: budget progress bars, and the transfer-only "to account" picker */
+  /* Page-specific: budget progress bars, month switcher, and the categories modal's scroll area */
   .budget-bar-track{width:100%;height:5px;border-radius:3px;background:var(--row-line);margin-top:6px;overflow:hidden;}
   .budget-bar-fill{height:100%;border-radius:3px;background:var(--primary);}
   .budget-bar-fill.over{background:var(--red);}
   .month-switch{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;font-weight:600;}
   .month-switch .icon-btn{font-size:16px;}
-  .to-account-cell{display:none;}
-  .to-account-cell.show{display:table-cell;}
+  .categories-modal{max-height:85vh;display:flex;flex-direction:column;}
+  .categories-modal .table-scroll{overflow-y:auto;flex:1;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -87,16 +87,43 @@
     </div>
   </div>
 
+  <div class="section">
+    <div class="section-head">
+      <h2>Transfers <span style="font-weight:400;color:var(--muted);font-size:12px;">(moving money between your own accounts — e.g. paying a credit card bill — not income or spending)</span></h2>
+    </div>
+    <div class="table-scroll">
+      <table id="transferTable">
+        <thead>
+          <tr>
+            <th class="left">Date</th>
+            <th class="left">Item</th>
+            <th class="left">From</th>
+            <th class="left">To</th>
+            <th>Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="transferBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="stats" id="statCards"></div>
 
-  <div class="chart-card" style="margin-bottom:20px;">
-    <h3>Spending by Category — <span id="donutMonthLabel"></span></h3>
-    <div class="canvas-box"><canvas id="chartCategory"></canvas></div>
+  <div class="charts">
+    <div class="chart-card">
+      <h3>By Top-Level Category — <span id="donutMonthLabel"></span></h3>
+      <div class="canvas-box"><canvas id="chartTopLevel"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>By Category — <span id="donutMonthLabel2"></span></h3>
+      <div class="canvas-box"><canvas id="chartCategory"></canvas></div>
+    </div>
   </div>
 
   <div class="section">
     <div class="section-head">
-      <h2>Budget vs Actual <span style="font-weight:400;color:var(--muted);font-size:12px;">(recurring monthly budgets, expense categories only)</span></h2>
+      <h2>Budget vs Actual <span style="font-weight:400;color:var(--muted);font-size:12px;">(recurring monthly budgets, per category)</span></h2>
     </div>
     <div class="table-scroll">
       <table id="budgetTable">
@@ -131,7 +158,7 @@
             <th class="left">Item</th>
             <th class="left">Category</th>
             <th class="left">Account</th>
-            <th class="left to-account-cell" id="toAccountHeader">To Account</th>
+            <th>In / Out</th>
             <th>Amount</th>
             <th></th>
           </tr>
@@ -156,15 +183,15 @@
 </div>
 
 <div class="modal-backdrop" id="categoriesBackdrop">
-  <div class="modal" style="max-width:560px;">
+  <div class="modal categories-modal" style="max-width:560px;">
     <h3>Manage Categories</h3>
-    <p>Rename, retype, or archive categories. Archiving keeps history for past transactions but hides it from new-transaction pickers.</p>
+    <p>Rename, regroup, or archive categories. A category with no parent is itself a top-level group (used for the "By Top-Level Category" chart). Archiving keeps history for past transactions but hides it from new-transaction pickers.</p>
     <div class="table-scroll">
       <table id="categoriesTable">
         <thead>
           <tr>
             <th class="left">Name</th>
-            <th class="left">Type</th>
+            <th class="left">Parent</th>
             <th></th>
           </tr>
         </thead>

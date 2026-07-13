@@ -3,7 +3,15 @@
    as the Portfolio page (app.js), under a new top-level state.dailyTracker key — see the
    persist() contract note below, which must stay behaviorally identical to app.js's persist()
    so a shared _rev/updated stamp and Drive-sync notification work the same regardless of which
-   page last saved. Independent ledger: never writes into state.assetClasses/otherAssets. */
+   page last saved. Independent ledger: never writes into state.assetClasses/otherAssets.
+
+   Categories are a simple two-level hierarchy (a category with no parentId is itself a
+   top-level group, e.g. "Income"/"Expense"/"Savings") used purely for organizing and charting —
+   they carry no fixed income/expense/savings "type". Whether a transaction is money in or out
+   is set per-transaction (the direction field), so the same category can be used either way
+   (e.g. a rare refund logged as "in" under "Groceries"). Transfers — moving money between two
+   of the user's own accounts, e.g. paying a credit card bill — are a separate structure
+   entirely, not a category, since they're not real income or spending. */
 
 (function () {
   "use strict";
@@ -14,7 +22,9 @@
   // Theme toggle logic lives in theme.js (shared with index.html). It calls window.onThemeChange
   // after every change, since Chart.js bakes colors in at creation time and needs an explicit
   // redraw — everything else updates for free via CSS custom properties.
-  window.onThemeChange = () => { if (typeof renderChart === "function") renderChart(computeDerivedTracker()); };
+  window.onThemeChange = () => {
+    if (typeof renderCharts === "function") renderCharts(computeDerivedTracker());
+  };
 
   let idCounter = 0;
   function uid(prefix) {
@@ -33,26 +43,76 @@
   }
 
   function defaultCategories() {
-    const mk = (name, type) => ({ id: uid("cat"), name, type, archived: false });
+    const income = { id: uid("cat"), name: "Income", parentId: null, archived: false };
+    const expense = { id: uid("cat"), name: "Expense", parentId: null, archived: false };
+    const savings = { id: uid("cat"), name: "Savings", parentId: null, archived: false };
+    const mk = (name, parent) => ({ id: uid("cat"), name, parentId: parent.id, archived: false });
     return [
-      mk("Groceries", "expense"), mk("EMI", "expense"), mk("Dining out", "expense"),
-      mk("Rent & Maintenance", "expense"), mk("Meds & Supp", "expense"), mk("Charges", "expense"),
-      mk("Entertainment", "expense"), mk("Food delivery", "expense"), mk("Transport (Fuel)", "expense"),
-      mk("Online shopping", "expense"), mk("Essential Spends", "expense"), mk("Adhoc", "expense"),
-      mk("Money lent", "expense"), mk("Travel", "expense"),
-      mk("CC Bills", "transfer"), mk("Just transfer", "transfer"),
-      mk("Investments", "savings"), mk("Emergency Fund", "savings"), mk("Chit", "savings"),
-      mk("Paycheck", "income"), mk("Returns", "income"), mk("Inv/savings returns", "income")
+      income, expense, savings,
+      mk("Groceries", expense), mk("EMI", expense), mk("Dining out", expense),
+      mk("Rent & Maintenance", expense), mk("Meds & Supp", expense), mk("Charges", expense),
+      mk("Entertainment", expense), mk("Food delivery", expense), mk("Transport (Fuel)", expense),
+      mk("Online shopping", expense), mk("Essential Spends", expense), mk("Adhoc", expense),
+      mk("Money lent", expense), mk("Travel", expense),
+      mk("Investments", savings), mk("Emergency Fund", savings), mk("Chit", savings),
+      mk("Paycheck", income), mk("Returns", income), mk("Inv/savings returns", income)
     ];
   }
 
   function seedTracker() {
-    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], budgets: {} };
+    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {} };
   }
 
   function isValidTracker(t) {
     return !!t && Array.isArray(t.accounts) && Array.isArray(t.categories) &&
-      Array.isArray(t.transactions) && t.budgets && typeof t.budgets === "object";
+      Array.isArray(t.transactions) && Array.isArray(t.transfers) && t.budgets && typeof t.budgets === "object";
+  }
+
+  // One-time upgrade from the first version of this feature, whose categories carried a fixed
+  // type (expense/income/savings/transfer) and whose transactions used toAccountId for
+  // transfers instead of a separate transfers[] list. Returns null if `old` isn't that shape
+  // (nothing to migrate), so load() below falls back to a fresh seed as before.
+  function migrateOldTracker(old) {
+    if (!old || !Array.isArray(old.categories) || !old.categories.some((c) => c.type !== undefined)) return null;
+
+    const groupNames = { income: "Income", expense: "Expense", savings: "Savings" };
+    const groups = {};
+    function groupFor(type) {
+      const key = groupNames[type] ? type : "expense";
+      if (!groups[key]) groups[key] = { id: uid("cat"), name: groupNames[key], parentId: null, archived: false };
+      return groups[key];
+    }
+
+    const oldCatById = {};
+    old.categories.forEach((c) => { oldCatById[c.id] = c; });
+
+    const categories = [];
+    old.categories.forEach((c) => {
+      if (c.type === "transfer") return; // dropped — its transactions become real transfers below
+      const group = groupFor(c.type);
+      if (!categories.includes(group)) categories.push(group);
+      categories.push({ id: c.id, name: c.name, parentId: group.id, archived: !!c.archived });
+    });
+
+    const transactions = [];
+    const transfers = [];
+    (old.transactions || []).forEach((t) => {
+      const oldCat = oldCatById[t.categoryId];
+      if (oldCat && oldCat.type === "transfer" && t.toAccountId) {
+        transfers.push({ id: t.id, date: t.date, item: t.item, amount: t.amount, fromAccountId: t.accountId, toAccountId: t.toAccountId });
+      } else if (oldCat) {
+        // The old model incorrectly treated "savings" the same as "income" (added to balance);
+        // this migration corrects it to "out", matching what actually happened to the source
+        // account (money left it to be invested) — see the balance-math comment further down.
+        transactions.push({ id: t.id, date: t.date, item: t.item, amount: t.amount, direction: oldCat.type === "income" ? "in" : "out", categoryId: t.categoryId, accountId: t.accountId });
+      }
+    });
+
+    return {
+      accounts: Array.isArray(old.accounts) ? old.accounts : defaultAccounts(),
+      categories, transactions, transfers,
+      budgets: old.budgets && typeof old.budgets === "object" ? old.budgets : {}
+    };
   }
 
   // ---------- state (shared blob with app.js) ----------
@@ -65,7 +125,9 @@
       // Repair only the dailyTracker key — never touch assetClasses/otherAssets/etc., which
       // belong to app.js. This is the tracker-side half of the same fix applied to app.js's
       // load(): a corrupt/missing piece of one feature must not nuke the other's data.
-      if (!isValidTracker(parsed.dailyTracker)) parsed.dailyTracker = seedTracker();
+      if (!isValidTracker(parsed.dailyTracker)) {
+        parsed.dailyTracker = migrateOldTracker(parsed.dailyTracker) || seedTracker();
+      }
       return parsed;
     } catch (e) {
       return { dailyTracker: seedTracker() };
@@ -76,6 +138,7 @@
   let selectedMonth = todayStr().slice(0, 7);
   let searchQuery = "";
   let filterCategoryId = "";
+  let chartTopLevel = null;
   let chartCategory = null;
 
   let storageWarned = false;
@@ -98,6 +161,18 @@
   function tracker() { return state.dailyTracker; }
   function findAccount(id) { return tracker().accounts.find((a) => a.id === id); }
   function findCategory(id) { return tracker().categories.find((c) => c.id === id); }
+  function isLeafCategory(cat) { return !tracker().categories.some((c) => c.parentId === cat.id); }
+  function topLevelOf(cat) {
+    let c = cat;
+    const seen = new Set();
+    while (c && c.parentId && !seen.has(c.id)) {
+      seen.add(c.id);
+      const p = findCategory(c.parentId);
+      if (!p) break;
+      c = p;
+    }
+    return c;
+  }
 
   // ---------- formatting (duplicated from app.js — must stay behaviorally identical) ----------
   const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
@@ -153,65 +228,68 @@
 
   // ---------- account balances (all-time, not scoped to the selected month) ----------
   // Every account has a type: "asset" (money you hold) or "liability" (money you owe, e.g. CC).
-  // Spending on an asset account reduces it; spending on a liability account increases what's
-  // owed. Paying a CC bill isn't an expense — it's a transfer from an asset account to the
-  // liability account, which must move both balances in the correct, opposite-of-naive
+  // An "in" transaction on an asset account increases it; on a liability account it reduces
+  // what's owed. An "out" transaction does the opposite. Transfers move money between two of
+  // the user's own accounts and must move both balances in the correct, opposite-of-naive
   // direction simultaneously (this is exactly what the original spreadsheet's #REF! formulas
-  // failed to do).
+  // failed to do) — e.g. paying a CC bill reduces both the paying account and the CC debt.
   function balanceSign(account) { return account.type === "liability" ? -1 : 1; }
 
   function applyTxnToBalances(balances, txn) {
-    const cat = findCategory(txn.categoryId);
     const acct = findAccount(txn.accountId);
-    if (!cat || !acct) return;
-    if (cat.type === "income" || cat.type === "savings") {
-      balances[acct.id] = (balances[acct.id] || 0) + balanceSign(acct) * txn.amount;
-    } else if (cat.type === "expense") {
-      balances[acct.id] = (balances[acct.id] || 0) - balanceSign(acct) * txn.amount;
-    } else if (cat.type === "transfer") {
-      const toAcct = findAccount(txn.toAccountId);
-      if (!toAcct) return;
-      balances[acct.id] = (balances[acct.id] || 0) - balanceSign(acct) * txn.amount;
-      balances[toAcct.id] = (balances[toAcct.id] || 0) + balanceSign(toAcct) * txn.amount;
-    }
+    if (!acct) return;
+    const delta = (txn.direction === "in" ? 1 : -1) * balanceSign(acct) * txn.amount;
+    balances[acct.id] = (balances[acct.id] || 0) + delta;
+  }
+
+  function applyTransferToBalances(balances, tr) {
+    const from = findAccount(tr.fromAccountId);
+    const to = findAccount(tr.toAccountId);
+    if (!from || !to) return;
+    balances[from.id] = (balances[from.id] || 0) - balanceSign(from) * tr.amount;
+    balances[to.id] = (balances[to.id] || 0) + balanceSign(to) * tr.amount;
   }
 
   function computeAccountBalances() {
     const balances = {};
     tracker().accounts.forEach((a) => { balances[a.id] = numOr0(a.openingBalance); });
     tracker().transactions.forEach((txn) => applyTxnToBalances(balances, txn));
+    tracker().transfers.forEach((tr) => applyTransferToBalances(balances, tr));
     return balances;
   }
 
   // ---------- derived (month-scoped) ----------
   function computeDerivedTracker() {
     const monthTxns = tracker().transactions.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
+    const monthTransfers = tracker().transfers.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
     let totalIncome = 0;
     let totalExpense = 0;
-    const spendByCategory = {};
+    const spendByTopLevel = {};
+    const spendBySub = {};
     monthTxns.forEach((t) => {
       const cat = findCategory(t.categoryId);
       if (!cat) return;
-      if (cat.type === "income" || cat.type === "savings") {
+      if (t.direction === "in") {
         totalIncome += t.amount;
-      } else if (cat.type === "expense") {
+      } else {
         totalExpense += t.amount;
-        spendByCategory[t.categoryId] = (spendByCategory[t.categoryId] || 0) + t.amount;
+        const top = topLevelOf(cat);
+        if (top) spendByTopLevel[top.id] = (spendByTopLevel[top.id] || 0) + t.amount;
+        spendBySub[cat.id] = (spendBySub[cat.id] || 0) + t.amount;
       }
-      // "transfer" category transactions move money between the user's own accounts — they're
-      // not real income or spend, so they're intentionally excluded from both totals.
     });
     const budgetRows = tracker().categories
-      .filter((c) => c.type === "expense" && !c.archived)
+      .filter((c) => !c.archived && isLeafCategory(c))
       .map((c) => {
-        const actual = spendByCategory[c.id] || 0;
+        const actual = spendBySub[c.id] || 0;
         const budget = numOr0(tracker().budgets[c.id]);
         const pct = budget > 0 ? (actual / budget) * 100 : (actual > 0 ? 100 : 0);
         return { category: c, actual, budget, pct };
-      });
+      })
+      .filter((row) => row.actual > 0 || row.budget > 0);
     return {
-      monthTxns, totalIncome, totalExpense, net: totalIncome - totalExpense,
-      txnCount: monthTxns.length, spendByCategory, budgetRows, balances: computeAccountBalances()
+      monthTxns, monthTransfers, totalIncome, totalExpense, net: totalIncome - totalExpense,
+      txnCount: monthTxns.length, spendByTopLevel, spendBySub, budgetRows, balances: computeAccountBalances()
     };
   }
 
@@ -220,9 +298,10 @@
     const d = computeDerivedTracker();
     renderMonthLabel();
     renderAccounts(d);
+    renderTransfers(d);
     renderStats(d);
     renderBudget(d);
-    renderChart(d);
+    renderCharts(d);
     renderTxnFilterOptions();
     renderTransactions(d);
 
@@ -235,6 +314,7 @@
     document.getElementById("monthLabel").textContent = label;
     document.getElementById("monthSubtitle").textContent = label + " overview";
     document.getElementById("donutMonthLabel").textContent = label;
+    document.getElementById("donutMonthLabel2").textContent = label;
   }
 
   function card(label, value, hintHtml) {
@@ -271,6 +351,31 @@
     document.getElementById("accountsBody").innerHTML = rows;
   }
 
+  function renderTransfers(d) {
+    let rows = d.monthTransfers.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).map((t) => {
+      return "<tr>" +
+        '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="transfer" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
+        '<td class="left"><input class="cell-input name-input" data-type="transfer" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
+        '<td class="left"><select class="cell-input" style="width:110px;" data-type="transfer" data-id="' + t.id + '" data-field="fromAccountId">' + acctOptions(t.fromAccountId) + "</select></td>" +
+        '<td class="left"><select class="cell-input" style="width:110px;" data-type="transfer" data-id="' + t.id + '" data-field="toAccountId">' + acctOptions(t.toAccountId) + "</select></td>" +
+        '<td><input class="cell-input small" type="number" step="0.01" data-type="transfer" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
+        '<td><button class="icon-btn" data-action="delete-transfer" data-id="' + t.id + '" title="Delete transfer">✕</button></td>' +
+        "</tr>";
+    }).join("");
+    if (!rows) rows = '<tr><td colspan="6" class="empty-msg">No transfers this month.</td></tr>';
+    const firstAcct = tracker().accounts[0];
+    const secondAcct = tracker().accounts[1] || firstAcct;
+    rows += '<tr class="add-row">' +
+      '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" id="newTransferDate" value="' + todayStr() + '"></td>' +
+      '<td class="left"><input class="cell-input name-input" placeholder="e.g. CC bill payment" id="newTransferItem"></td>' +
+      '<td class="left"><select class="cell-input" style="width:110px;" id="newTransferFrom">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
+      '<td class="left"><select class="cell-input" style="width:110px;" id="newTransferTo">' + acctOptions(secondAcct && secondAcct.id) + "</select></td>" +
+      '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTransferAmount"></td>' +
+      '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-transfer">+ Add</button></td>' +
+      "</tr>";
+    document.getElementById("transferBody").innerHTML = rows;
+  }
+
   function renderStats(d) {
     document.getElementById("statCards").innerHTML = [
       card("Total Income", fmtINR(d.totalIncome), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>"),
@@ -282,12 +387,12 @@
 
   function renderBudget(d) {
     if (d.budgetRows.length === 0) {
-      document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No expense categories yet — add one via Manage Categories.</td></tr>';
+      document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No spending recorded or budgeted yet this month.</td></tr>';
       return;
     }
     document.getElementById("budgetBody").innerHTML = d.budgetRows.map((row, i) => {
       const barPct = Math.min(row.pct, 100);
-      const over = row.pct > 100;
+      const over = row.budget > 0 && row.pct > 100;
       return "<tr>" +
         '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
         '<td><input class="cell-input small" type="number" step="1" data-type="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
@@ -297,40 +402,56 @@
     }).join("");
   }
 
-  function renderChart(d) {
+  function renderCharts(d) {
     const cs = getComputedStyle(document.documentElement);
-    const cssVar = (name) => cs.getPropertyValue(name).trim();
-    const mutedColor = cssVar("--muted");
-    const cardBg = cssVar("--card");
+    const mutedColor = cs.getPropertyValue("--muted").trim();
+    const cardBg = cs.getPropertyValue("--card").trim();
 
-    const labels = [];
-    const data = [];
-    const colors = [];
-    tracker().categories.filter((c) => c.type === "expense" && !c.archived).forEach((c, i) => {
-      const amt = d.spendByCategory[c.id] || 0;
-      if (amt > 0) { labels.push(c.name); data.push(amt); colors.push(PALETTE[i % PALETTE.length]); }
+    function draw(existing, canvasId, labels, data, colors) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      if (existing) existing.destroy();
+      if (labels.length === 0) return null;
+      return new Chart(ctx, {
+        type: "doughnut",
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: cardBg }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
+        }
+      });
+    }
+
+    const topLabels = [], topData = [], topColors = [];
+    tracker().categories.filter((c) => !c.parentId).forEach((c, i) => {
+      const amt = d.spendByTopLevel[c.id] || 0;
+      if (amt > 0) { topLabels.push(c.name); topData.push(amt); topColors.push(PALETTE[i % PALETTE.length]); }
     });
+    chartTopLevel = draw(chartTopLevel, "chartTopLevel", topLabels, topData, topColors);
 
-    const ctx = document.getElementById("chartCategory").getContext("2d");
-    if (chartCategory) { chartCategory.destroy(); chartCategory = null; }
-    if (labels.length === 0) return; // nothing to chart this month
-
-    chartCategory = new Chart(ctx, {
-      type: "doughnut",
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: cardBg }] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
-      }
+    const subLabels = [], subData = [], subColors = [];
+    tracker().categories.filter((c) => isLeafCategory(c) && !c.archived).forEach((c, i) => {
+      const amt = d.spendBySub[c.id] || 0;
+      if (amt > 0) { subLabels.push(c.name); subData.push(amt); subColors.push(PALETTE[i % PALETTE.length]); }
     });
+    chartCategory = draw(chartCategory, "chartCategory", subLabels, subData, subColors);
   }
 
-  function catOptions(selectedId) {
-    return tracker().categories.filter((c) => !c.archived || c.id === selectedId)
-      .map((c) => '<option value="' + c.id + '"' + (c.id === selectedId ? " selected" : "") + ">" + escapeHtml(c.name) + "</option>").join("");
-  }
   function acctOptions(selectedId) {
     return tracker().accounts.map((a) => '<option value="' + a.id + '"' + (a.id === selectedId ? " selected" : "") + ">" + escapeHtml(a.name) + "</option>").join("");
+  }
+
+  // Grouped by top-level category via <optgroup>, so the hierarchy is visible without extra UI.
+  // A top-level category with no children of its own is included as a directly-selectable option.
+  function categorySelectOptions(selectedId) {
+    return tracker().categories.filter((c) => !c.parentId).map((top) => {
+      const subs = tracker().categories.filter((c) => c.parentId === top.id && (!c.archived || c.id === selectedId));
+      let opts = "";
+      if (isLeafCategory(top)) {
+        opts += '<option value="' + top.id + '"' + (top.id === selectedId ? " selected" : "") + ">" + escapeHtml(top.name) + " (general)</option>";
+      }
+      opts += subs.map((s) => '<option value="' + s.id + '"' + (s.id === selectedId ? " selected" : "") + ">" + escapeHtml(s.name) + "</option>").join("");
+      return opts ? '<optgroup label="' + escapeHtml(top.name) + '">' + opts + "</optgroup>" : "";
+    }).join("");
   }
 
   function renderTransactions(d) {
@@ -340,21 +461,18 @@
       const q = searchQuery.toLowerCase();
       rows = rows.filter((t) => t.item.toLowerCase().includes(q));
     }
-    const anyTransfer = tracker().categories.some((c) => c.type === "transfer" && !c.archived);
-    document.getElementById("toAccountHeader").classList.toggle("show", anyTransfer);
 
     let html = rows.map((t) => {
-      const cat = findCategory(t.categoryId);
-      const isTransfer = cat && cat.type === "transfer";
-      const amtClass = !cat ? "neu" : cat.type === "expense" ? "pos" : (cat.type === "income" || cat.type === "savings") ? "neg" : "neu";
+      const amtClass = t.direction === "in" ? "neg" : "pos";
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
         '<td class="left"><input class="cell-input name-input" data-type="txn" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
-        '<td class="left"><select class="cell-input" style="width:150px;" data-type="txn" data-id="' + t.id + '" data-field="categoryId">' + catOptions(t.categoryId) + "</select></td>" +
+        '<td class="left"><select class="cell-input" style="width:170px;" data-type="txn" data-id="' + t.id + '" data-field="categoryId">' + categorySelectOptions(t.categoryId) + "</select></td>" +
         '<td class="left"><select class="cell-input" style="width:110px;" data-type="txn" data-id="' + t.id + '" data-field="accountId">' + acctOptions(t.accountId) + "</select></td>" +
-        '<td class="left to-account-cell' + (anyTransfer ? " show" : "") + '">' +
-        (isTransfer ? '<select class="cell-input" style="width:110px;" data-type="txn" data-id="' + t.id + '" data-field="toAccountId">' + acctOptions(t.toAccountId) + "</select>" : "—") +
-        "</td>" +
+        '<td><select class="cell-input" style="width:auto;" data-type="txn" data-id="' + t.id + '" data-field="direction">' +
+        '<option value="out"' + (t.direction === "out" ? " selected" : "") + ">Out</option>" +
+        '<option value="in"' + (t.direction === "in" ? " selected" : "") + ">In</option>" +
+        "</select></td>" +
         '<td class="' + amtClass + '"><input class="cell-input small" type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
         '<td><button class="icon-btn" data-action="delete-txn" data-id="' + t.id + '" title="Delete transaction">✕</button></td>' +
         "</tr>";
@@ -364,38 +482,19 @@
       html = '<tr><td colspan="7" class="empty-msg">No transactions ' + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".</td></tr>";
     }
 
-    const firstCat = tracker().categories.find((c) => !c.archived);
+    const firstCat = tracker().categories.find((c) => isLeafCategory(c) && !c.archived) || tracker().categories.find((c) => !c.parentId);
     const firstAcct = tracker().accounts[0];
-    const firstIsTransfer = firstCat && firstCat.type === "transfer";
     html += '<tr class="add-row">' +
       '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" id="newTxnDate" value="' + todayStr() + '"></td>' +
       '<td class="left"><input class="cell-input name-input" placeholder="Item" id="newTxnItem"></td>' +
-      '<td class="left"><select class="cell-input" style="width:150px;" id="newTxnCategory">' + catOptions(firstCat && firstCat.id) + "</select></td>" +
+      '<td class="left"><select class="cell-input" style="width:170px;" id="newTxnCategory">' + categorySelectOptions(firstCat && firstCat.id) + "</select></td>" +
       '<td class="left"><select class="cell-input" style="width:110px;" id="newTxnAccount">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
-      '<td class="left to-account-cell' + (anyTransfer ? " show" : "") + '" id="newTxnToAccountCell">' +
-      (firstIsTransfer ? '<select class="cell-input" style="width:110px;" id="newTxnToAccount">' + acctOptions() + "</select>" : "—") +
-      "</td>" +
+      '<td><select class="cell-input" style="width:auto;" id="newTxnDirection"><option value="out" selected>Out</option><option value="in">In</option></select></td>' +
       '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
       '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-txn">+ Add</button></td>' +
       "</tr>";
 
     document.getElementById("txnBody").innerHTML = html;
-    wireAddTxnRow();
-  }
-
-  // The add-row is regenerated on every render, but its own category picker must update the
-  // "to account" cell live, without a full re-render — otherwise the user's in-progress typed
-  // item/amount would be wiped before they click Add.
-  function wireAddTxnRow() {
-    const catSel = document.getElementById("newTxnCategory");
-    const toCell = document.getElementById("newTxnToAccountCell");
-    if (!catSel || !toCell) return;
-    catSel.addEventListener("change", () => {
-      const cat = findCategory(catSel.value);
-      toCell.innerHTML = (cat && cat.type === "transfer")
-        ? '<select class="cell-input" style="width:110px;" id="newTxnToAccount">' + acctOptions() + "</select>"
-        : "—";
-    });
   }
 
   function renderTxnFilterOptions() {
@@ -407,18 +506,23 @@
     filterCategoryId = sel.value;
   }
 
+  function parentSelectOptions(categories, selectedParentId, excludeId) {
+    let opts = '<option value=""' + (!selectedParentId ? " selected" : "") + ">— Top-level —</option>";
+    opts += categories.filter((c) => !c.parentId && c.id !== excludeId)
+      .map((c) => '<option value="' + c.id + '"' + (c.id === selectedParentId ? " selected" : "") + ">" + escapeHtml(c.name) + "</option>").join("");
+    return opts;
+  }
+
   function renderCategoriesModal() {
     const rows = tracker().categories.map((c) => {
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="category" data-id="' + c.id + '" data-field="name" value="' + escapeAttr(c.name) + '"' + (c.archived ? ' style="opacity:.5;"' : "") + "></td>" +
-        '<td class="left"><select class="cell-input" style="width:auto;" data-type="category" data-id="' + c.id + '" data-field="type">' +
-        ["expense", "income", "savings", "transfer"].map((t) => '<option value="' + t + '"' + (c.type === t ? " selected" : "") + '>' + t.charAt(0).toUpperCase() + t.slice(1) + "</option>").join("") +
-        "</select></td>" +
+        '<td class="left"><select class="cell-input" style="width:auto;" data-type="category" data-id="' + c.id + '" data-field="parentId">' + parentSelectOptions(tracker().categories, c.parentId, c.id) + "</select></td>" +
         '<td><button class="btn" style="padding:4px 8px;font-size:11px;" data-action="toggle-archive-category" data-id="' + c.id + '">' + (c.archived ? "Unarchive" : "Archive") + "</button></td>" +
         "</tr>";
     }).join("");
     const addRow = '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New category name" id="newCategoryName"></td>' +
-      '<td class="left"><select class="cell-input" style="width:auto;" id="newCategoryType"><option value="expense">Expense</option><option value="income">Income</option><option value="savings">Savings</option><option value="transfer">Transfer</option></select></td>' +
+      '<td class="left"><select class="cell-input" style="width:auto;" id="newCategoryParent">' + parentSelectOptions(tracker().categories, null, null) + "</select></td>" +
       '<td><button class="btn primary" style="padding:4px 8px;font-size:11px;" data-action="add-category">+ Add</button></td></tr>';
     document.getElementById("categoriesBody").innerHTML = rows + addRow;
   }
@@ -434,19 +538,26 @@
   const HEADER_ORDER = ["Date", "Item", "Income", "Expense", "Account", "Category"];
 
   function toRows(dt) {
-    return dt.transactions.map((t) => {
+    const rows = dt.transactions.map((t) => {
       const cat = findCategory(t.categoryId);
       const acct = findAccount(t.accountId);
-      const isIncome = !!cat && (cat.type === "income" || cat.type === "savings");
       return {
-        Date: t.date,
-        Item: t.item,
-        Income: isIncome ? t.amount : "",
-        Expense: !isIncome ? t.amount : "",
+        Date: t.date, Item: t.item,
+        Income: t.direction === "in" ? t.amount : "",
+        Expense: t.direction === "out" ? t.amount : "",
         Account: acct ? acct.name : "",
         Category: cat ? cat.name : ""
       };
     });
+    dt.transfers.forEach((t) => {
+      const from = findAccount(t.fromAccountId);
+      const to = findAccount(t.toAccountId);
+      rows.push({
+        Date: t.date, Item: t.item, Income: "", Expense: t.amount,
+        Account: from ? from.name : "", Category: "Transfer to " + (to ? to.name : "?")
+      });
+    });
+    return rows;
   }
 
   function parseRows(rows) {
@@ -454,12 +565,15 @@
       accounts: tracker().accounts.slice(),
       categories: tracker().categories.slice(),
       transactions: [],
+      transfers: tracker().transfers.slice(),
       budgets: Object.assign({}, tracker().budgets)
     };
     const catByName = {};
     dt.categories.forEach((c) => { catByName[c.name.toLowerCase()] = c; });
     const acctByName = {};
     dt.accounts.forEach((a) => { acctByName[a.name.toLowerCase()] = a; });
+    const incomeGroup = dt.categories.find((c) => !c.parentId && c.name.toLowerCase() === "income") || dt.categories.find((c) => !c.parentId);
+    const expenseGroup = dt.categories.find((c) => !c.parentId && c.name.toLowerCase() === "expense") || dt.categories.find((c) => !c.parentId);
 
     rows.forEach((r) => {
       const dateStr = String(r.Date || "").trim();
@@ -478,12 +592,14 @@
       const expense = parseFloat(r.Expense) || 0;
       const amount = income || expense;
       if (!amount) return;
+      const direction = income ? "in" : "out";
 
       const item = String(r.Item || "").trim();
       const catName = String(r.Category || "Uncategorized").trim();
       let cat = catByName[catName.toLowerCase()];
       if (!cat) {
-        cat = { id: uid("cat"), name: catName, type: income ? "income" : "expense", archived: false };
+        const parent = direction === "in" ? incomeGroup : expenseGroup;
+        cat = { id: uid("cat"), name: catName, parentId: parent ? parent.id : null, archived: false };
         dt.categories.push(cat);
         catByName[catName.toLowerCase()] = cat;
       }
@@ -496,7 +612,7 @@
         acctByName[acctName.toLowerCase()] = acct;
       }
 
-      dt.transactions.push({ id: uid("txn"), date: iso, item, amount, categoryId: cat.id, accountId: acct.id, toAccountId: null });
+      dt.transactions.push({ id: uid("txn"), date: iso, item, amount, direction, categoryId: cat.id, accountId: acct.id });
     });
     return dt;
   }
@@ -528,8 +644,8 @@
     const paycheck = t.categories.find((c) => c.name === "Paycheck");
     const salary = t.accounts.find((a) => a.name === "SALARY");
     t.transactions = [
-      { id: uid("txn"), date: todayStr(), item: "Sample grocery run", amount: 850, categoryId: groceries.id, accountId: salary.id, toAccountId: null },
-      { id: uid("txn"), date: todayStr(), item: "Sample salary credit", amount: 50000, categoryId: paycheck.id, accountId: salary.id, toAccountId: null }
+      { id: uid("txn"), date: todayStr(), item: "Sample grocery run", amount: 850, direction: "out", categoryId: groceries.id, accountId: salary.id },
+      { id: uid("txn"), date: todayStr(), item: "Sample salary credit", amount: 50000, direction: "in", categoryId: paycheck.id, accountId: salary.id }
     ];
     return t;
   }
@@ -541,7 +657,7 @@
       try {
         // raw: true stops SheetJS from auto-detecting DD/MM/YYYY-style dates as US MM/DD/YYYY
         // and silently misreading them (e.g. "01/07/2026" — 1 July — becoming 7 January).
-        // parseRows() below still parses the resulting plain string itself via its own regex.
+        // parseRows() above still parses the resulting plain string itself via its own regex.
         const workbook = isCsv ? XLSX.read(e.target.result, { type: "string", raw: true }) : XLSX.read(e.target.result, { type: "array", raw: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -601,7 +717,7 @@
     });
     document.getElementById("categoriesClose").addEventListener("click", () => {
       document.getElementById("categoriesBackdrop").classList.remove("show");
-      renderAll(); // category name/type/archive changes affect budget/transaction rendering
+      renderAll(); // category name/parent/archive changes affect budget/chart/transaction rendering
     });
 
     document.getElementById("txnSearch").addEventListener("input", (e) => {
@@ -632,19 +748,19 @@
         const tx = tracker().transactions.find((x) => x.id === id);
         if (!tx) return;
         tx[field] = val;
-        if (field === "categoryId") {
-          const cat = findCategory(val);
-          if (!cat || cat.type !== "transfer") tx.toAccountId = null;
-        }
+        persist();
+        renderAll();
+      } else if (type === "transfer") {
+        const tr = tracker().transfers.find((x) => x.id === id);
+        if (!tr) return;
+        tr[field] = val;
         persist();
         renderAll();
       } else if (type === "category") {
         const c = findCategory(id);
         if (!c) return;
-        c[field] = val;
-        if (field === "type" && val !== "transfer") {
-          tracker().transactions.forEach((tx) => { if (tx.categoryId === id) tx.toAccountId = null; });
-        }
+        if (field === "parentId" && val === id) { toast("A category can't be its own parent."); renderCategoriesModal(); return; }
+        c[field] = field === "parentId" ? (val || null) : val;
         persist();
         renderCategoriesModal();
       } else if (type === "budget") {
@@ -673,11 +789,13 @@
         return;
       }
       if (action === "delete-account") {
-        const inUse = tracker().transactions.some((t) => t.accountId === actionEl.dataset.id || t.toAccountId === actionEl.dataset.id);
-        if (inUse) { toast("Can't delete an account with transactions — move or delete those first."); return; }
+        const id = actionEl.dataset.id;
+        const inUse = tracker().transactions.some((t) => t.accountId === id) ||
+          tracker().transfers.some((t) => t.fromAccountId === id || t.toAccountId === id);
+        if (inUse) { toast("Can't delete an account with transactions or transfers — move or delete those first."); return; }
         const ok = await confirmDialog("Delete account?", "This removes the account.");
         if (!ok) return;
-        tracker().accounts = tracker().accounts.filter((a) => a.id !== actionEl.dataset.id);
+        tracker().accounts = tracker().accounts.filter((a) => a.id !== id);
         persist();
         renderAll();
         return;
@@ -688,16 +806,11 @@
         const item = document.getElementById("newTxnItem").value.trim();
         const categoryId = document.getElementById("newTxnCategory").value;
         const accountId = document.getElementById("newTxnAccount").value;
+        const direction = document.getElementById("newTxnDirection").value;
         const amount = parseFloat(document.getElementById("newTxnAmount").value) || 0;
-        const toAccountEl = document.getElementById("newTxnToAccount");
-        const cat = findCategory(categoryId);
         if (!item) { toast("Enter a description for the transaction."); return; }
         if (!amount) { toast("Enter an amount."); return; }
-        if (cat && cat.type === "transfer" && (!toAccountEl || !toAccountEl.value)) { toast("Pick a destination account for this transfer."); return; }
-        tracker().transactions.push({
-          id: uid("txn"), date, item, amount, categoryId, accountId,
-          toAccountId: (cat && cat.type === "transfer" && toAccountEl) ? toAccountEl.value : null
-        });
+        tracker().transactions.push({ id: uid("txn"), date, item, amount, direction, categoryId, accountId });
         persist();
         renderAll();
         toast("Transaction added.");
@@ -712,11 +825,35 @@
         return;
       }
 
+      if (action === "add-transfer") {
+        const date = document.getElementById("newTransferDate").value || todayStr();
+        const item = document.getElementById("newTransferItem").value.trim();
+        const fromAccountId = document.getElementById("newTransferFrom").value;
+        const toAccountId = document.getElementById("newTransferTo").value;
+        const amount = parseFloat(document.getElementById("newTransferAmount").value) || 0;
+        if (!item) { toast("Enter a description for the transfer."); return; }
+        if (!amount) { toast("Enter an amount."); return; }
+        if (fromAccountId === toAccountId) { toast("Pick two different accounts."); return; }
+        tracker().transfers.push({ id: uid("tr"), date, item, amount, fromAccountId, toAccountId });
+        persist();
+        renderAll();
+        toast("Transfer added.");
+        return;
+      }
+      if (action === "delete-transfer") {
+        const ok = await confirmDialog("Delete transfer?", "This removes the transfer.", "Delete", "Cancel", true);
+        if (!ok) return;
+        tracker().transfers = tracker().transfers.filter((t) => t.id !== actionEl.dataset.id);
+        persist();
+        renderAll();
+        return;
+      }
+
       if (action === "add-category") {
         const name = document.getElementById("newCategoryName").value.trim();
         if (!name) { toast("Enter a name for the new category."); return; }
-        const type = document.getElementById("newCategoryType").value;
-        tracker().categories.push({ id: uid("cat"), name, type, archived: false });
+        const parentId = document.getElementById("newCategoryParent").value || null;
+        tracker().categories.push({ id: uid("cat"), name, parentId, archived: false });
         persist();
         renderCategoriesModal();
         return;
