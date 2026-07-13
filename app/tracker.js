@@ -328,7 +328,7 @@
       const balText = bal < 0 ? "-" + fmtINR(Math.abs(bal)) : fmtINR(bal);
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="account" data-id="' + a.id + '" data-field="name" value="' + escapeAttr(a.name) + '"></td>' +
-        '<td><input class="cell-input" type="number" step="0.01" data-type="account" data-id="' + a.id + '" data-field="openingBalance" value="' + numOr0(a.openingBalance) + '"></td>' +
+        '<td><input class="cell-input amount" type="number" step="0.01" data-type="account" data-id="' + a.id + '" data-field="openingBalance" value="' + numOr0(a.openingBalance) + '"></td>' +
         '<td class="' + balClass + '">' + balText + "</td>" +
         '<td><button class="icon-btn" data-action="delete-account" data-id="' + a.id + '" title="Delete account">✕</button></td>' +
         "</tr>";
@@ -349,7 +349,7 @@
         '<td class="left"><input class="cell-input name-input" data-type="transfer" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
         '<td class="left"><select class="cell-input" style="width:110px;" data-type="transfer" data-id="' + t.id + '" data-field="fromAccountId">' + acctOptions(t.fromAccountId) + "</select></td>" +
         '<td class="left"><select class="cell-input" style="width:110px;" data-type="transfer" data-id="' + t.id + '" data-field="toAccountId">' + acctOptions(t.toAccountId) + "</select></td>" +
-        '<td><input class="cell-input small" type="number" step="0.01" data-type="transfer" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
+        '<td><input class="cell-input amount" type="number" step="0.01" data-type="transfer" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
         '<td><button class="icon-btn" data-action="delete-transfer" data-id="' + t.id + '" title="Delete transfer">✕</button></td>' +
         "</tr>";
     }).join("");
@@ -361,7 +361,7 @@
       '<td class="left"><input class="cell-input name-input" placeholder="e.g. CC bill payment" id="newTransferItem"></td>' +
       '<td class="left"><select class="cell-input" style="width:110px;" id="newTransferFrom">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
       '<td class="left"><select class="cell-input" style="width:110px;" id="newTransferTo">' + acctOptions(secondAcct && secondAcct.id) + "</select></td>" +
-      '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTransferAmount"></td>' +
+      '<td><input class="cell-input amount" type="number" placeholder="Amount" id="newTransferAmount"></td>' +
       '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-transfer">+ Add</button></td>' +
       "</tr>";
     document.getElementById("transferBody").innerHTML = rows;
@@ -386,7 +386,7 @@
       const over = row.budget > 0 && row.pct > 100;
       return "<tr>" +
         '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
-        '<td><input class="cell-input" style="width:90px;" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
+        '<td><input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '"></td>' +
         '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
         '<td style="min-width:110px;"><div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div></td>' +
         "</tr>";
@@ -476,7 +476,7 @@
       '<td class="left"><select class="cell-input" style="width:170px;" id="newTxnCategory">' + categorySelectOptions(firstCat && firstCat.id) + "</select></td>" +
       '<td class="left"><select class="cell-input" style="width:110px;" id="newTxnAccount">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
       '<td><select class="cell-input" style="width:auto;" id="newTxnDirection"><option value="out" selected>Out</option><option value="in">In</option></select></td>' +
-      '<td><input class="cell-input small" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
+      '<td><input class="cell-input amount" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
       '<td><button class="btn primary" style="padding:5px 10px;font-size:11px;" data-action="add-txn">+ Add</button></td>' +
       "</tr>";
 
@@ -491,7 +491,7 @@
         '<option value="out"' + (t.direction === "out" ? " selected" : "") + ">Out</option>" +
         '<option value="in"' + (t.direction === "in" ? " selected" : "") + ">In</option>" +
         "</select></td>" +
-        '<td class="' + amtClass + '"><input class="cell-input small" type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
+        '<td class="' + amtClass + '"><input class="cell-input amount" type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
         '<td><button class="icon-btn" data-action="delete-txn" data-id="' + t.id + '" title="Delete transaction">✕</button></td>' +
         "</tr>";
     }).join("");
@@ -764,6 +764,15 @@
     document.getElementById("txnSortOrder").addEventListener("change", (e) => {
       sortOrder = e.target.value;
       renderTransactions(computeDerivedTracker());
+    });
+
+    // Enter commits an edit the same way clicking away does — blur() triggers the existing
+    // "change" handler below rather than duplicating its logic.
+    document.body.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.classList.contains("cell-input")) {
+        e.preventDefault();
+        e.target.blur();
+      }
     });
 
     document.body.addEventListener("change", (e) => {

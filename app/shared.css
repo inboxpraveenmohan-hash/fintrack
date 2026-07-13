@@ -127,6 +127,9 @@ tbody tr.add-row td{padding:10px 12px;background:var(--row-tint);}
 .cell-input:focus{border-color:var(--primary);background:var(--card);outline:none;}
 .cell-input.name-input{width:170px;text-align:left;font-weight:500;}
 .cell-input.small{width:56px;}
+/* For currency/amount fields specifically — .small (56px) visibly truncates anything past
+   ~4 digits, which real amounts (salaries, EMIs, etc.) routinely exceed. */
+.cell-input.amount{width:100px;}
 select.cell-input{text-align:left;cursor:pointer;}
 
 .pos{color:var(--red);} .neg{color:var(--green);} .neu{color:var(--muted);}
@@ -140,6 +143,11 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px 0 0;}
 
 .modal-backdrop{position:fixed;inset:0;background:rgba(20,20,43,.45);display:none;align-items:center;justify-content:center;z-index:50;}
 .modal-backdrop.show{display:flex;}
+/* confirmDialog() can be triggered from inside another open modal (e.g. deleting a category
+   from the Manage Categories modal) — it must always paint above any other modal-backdrop,
+   not just whichever happens to come later in the DOM (same z-index would fall back to DOM
+   order, which put it visually behind modals declared after it in the HTML). */
+#confirmBackdrop{z-index:70;}
 .modal{background:var(--card);border-radius:var(--radius);padding:22px 24px;max-width:480px;width:90%;box-shadow:var(--shadow);}
 .modal h3{margin:0 0 8px;font-size:16px;}
 .modal p{font-size:13px;color:var(--muted);line-height:1.5;}

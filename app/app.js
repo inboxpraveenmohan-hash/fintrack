@@ -273,7 +273,7 @@
               '<td class="left"><input class="cell-input name-input" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="name" value="' + escapeAttr(h.name) + '"></td>' +
               "<td>—</td>" +
               "<td>—</td>" +
-              '<td><input class="cell-input" type="number" step="0.01" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></td>' +
+              '<td><input class="cell-input amount" type="number" step="0.01" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></td>' +
               "<td>" + fmtPct(h.currentPct) + "</td>" +
               "<td>—</td>" +
               "<td>—</td>" +
@@ -286,7 +286,7 @@
           '<tr class="add-row"><td colspan="9">' +
             '<div class="name-cell" style="gap:8px;padding-left:22px;">' +
               '<input class="cell-input name-input" placeholder="New holding name" id="newHoldingName_' + ac.id + '">' +
-              '<input class="cell-input small" type="number" placeholder="Value" id="newHoldingValue_' + ac.id + '">' +
+              '<input class="cell-input amount" type="number" placeholder="Value" id="newHoldingValue_' + ac.id + '">' +
               '<input class="cell-input small" type="number" placeholder="SIP %" id="newHoldingSip_' + ac.id + '">' +
               '<button class="btn" data-action="add-holding" data-parent="' + ac.id + '">+ Add Holding</button>' +
               '<span class="hint ' + (Math.abs(sipPctSum - 100) < 0.01 || ac.holdings.length === 0 ? "" : "warn") + '" style="font-size:11px;color:var(--muted);margin-left:auto;">SIP % total: ' + sipPctSum.toFixed(0) + "%</span>" +
@@ -318,7 +318,7 @@
     badge.className = "badge " + (sumOk ? "ok" : "warn");
 
     document.getElementById("monthlyInvestBadge").innerHTML =
-      'Monthly investment: <input class="cell-input small" style="width:70px;color:inherit;font-weight:700;" type="number" data-type="meta" data-field="monthlyInvestment" value="' + numOr0(state.monthlyInvestment) + '">';
+      'Monthly investment: <input class="cell-input amount" style="color:inherit;font-weight:700;" type="number" data-type="meta" data-field="monthlyInvestment" value="' + numOr0(state.monthlyInvestment) + '">';
 
     document.getElementById("sipModeSelect").value = d.sipMode;
 
@@ -342,8 +342,8 @@
         rows.push(
           "<tr>" +
             '<td class="left"><input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '"></td>' +
-            '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '"></td>' +
-            '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '"></td>' +
+            '<td><input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '"></td>' +
+            '<td><input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '"></td>' +
             '<td><button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
               '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button></td>' +
           "</tr>"
@@ -358,7 +358,7 @@
             '<input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '" onclick="event.stopPropagation()">' +
           "</div></td>" +
           "<td>" + fmtINR(o.currentValue) + "</td>" +
-          '<td><input class="cell-input" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '" onclick="event.stopPropagation()"></td>' +
+          '<td><input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '" onclick="event.stopPropagation()"></td>' +
           '<td><button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
             '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete section (and its items)">✕</button></td>' +
         "</tr>"
@@ -369,7 +369,7 @@
           rows.push(
             '<tr class="holding-row">' +
               '<td class="left"><input class="cell-input name-input" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="name" value="' + escapeAttr(h.name) + '"></td>' +
-              '<td><input class="cell-input" type="number" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></td>' +
+              '<td><input class="cell-input amount" type="number" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></td>' +
               "<td>—</td>" +
               '<td><button class="icon-btn" data-action="delete-other-holding" data-id="' + h.id + '" data-parent="' + o.id + '" title="Delete item">✕</button></td>' +
             "</tr>"
@@ -379,7 +379,7 @@
           '<tr class="add-row"><td colspan="4">' +
             '<div class="name-cell" style="gap:8px;padding-left:22px;">' +
               '<input class="cell-input name-input" placeholder="New item name" id="newOtherHoldingName_' + o.id + '">' +
-              '<input class="cell-input small" type="number" placeholder="Value" id="newOtherHoldingValue_' + o.id + '">' +
+              '<input class="cell-input amount" type="number" placeholder="Value" id="newOtherHoldingValue_' + o.id + '">' +
               '<button class="btn" data-action="add-other-holding" data-parent="' + o.id + '">+ Add Item</button>' +
             "</div>" +
           "</td></tr>"
@@ -395,8 +395,8 @@
       '<tr class="add-row"><td colspan="4">' +
         '<div class="name-cell" style="gap:8px;flex-wrap:wrap;">' +
           '<input class="cell-input name-input" placeholder="New item name" id="newOtherName">' +
-          '<input class="cell-input small" type="number" placeholder="Value" id="newOtherValue">' +
-          '<input class="cell-input small" type="number" placeholder="Monthly" id="newOtherMonthly">' +
+          '<input class="cell-input amount" type="number" placeholder="Value" id="newOtherValue">' +
+          '<input class="cell-input amount" type="number" placeholder="Monthly" id="newOtherMonthly">' +
           '<button class="btn" data-action="add-other">+ Add Other Asset</button>' +
           '<span style="width:1px;align-self:stretch;background:var(--border);"></span>' +
           '<input class="cell-input name-input" placeholder="New subsection name (e.g. Bonds)" id="newOtherGroupName">' +
@@ -1094,6 +1094,15 @@
       persist();
       renderAll();
       toast("All data cleared.");
+    });
+
+    // Enter commits an edit the same way clicking away does — blur() triggers the existing
+    // "change" handler below rather than duplicating its logic.
+    document.body.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.classList.contains("cell-input")) {
+        e.preventDefault();
+        e.target.blur();
+      }
     });
 
     // delegated change events for editable cells
