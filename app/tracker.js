@@ -282,16 +282,32 @@
     });
     // Every non-archived leaf category is listed, even with zero activity and no budget yet —
     // otherwise there'd be no row to type a budget into before you've spent anything in it.
-    // Categories with budgeting turned off (Manage Categories) — typically income ones — show
-    // their income total instead, with no budget/bar, since a budget target doesn't apply to them.
+    // A top-level (group) category only gets its own row if its "Budget?" box is explicitly
+    // checked — its Out/In figures then roll up every child category's activity, so setting a
+    // budget on the group tracks the whole group, translated from whatever its children logged.
+    // "Actual" always shows the category's whole picture: the primary direction (Out for a
+    // budgeted category, In for a non-budgeted one) as the headline figure, plus the other
+    // direction as a small hint whenever that category also has activity the other way —
+    // neither direction is ever silently dropped just because of the Budget? toggle.
+    function outInFor(cat) {
+      const childIds = tracker().categories.filter((c) => c.parentId === cat.id).map((c) => c.id);
+      if (childIds.length === 0) return { out: spendBySub[cat.id] || 0, in: incomeBySub[cat.id] || 0 };
+      return childIds.reduce((acc, id) => {
+        acc.out += spendBySub[id] || 0;
+        acc.in += incomeBySub[id] || 0;
+        return acc;
+      }, { out: 0, in: 0 });
+    }
     const budgetRows = tracker().categories
-      .filter((c) => !c.archived && isLeafCategory(c))
+      .filter((c) => !c.archived && (isLeafCategory(c) || c.hasBudget === true))
       .map((c) => {
         const hasBudget = c.hasBudget !== false;
-        const actual = hasBudget ? (spendBySub[c.id] || 0) : (incomeBySub[c.id] || 0);
+        const { out, in: inn } = outInFor(c);
+        const actual = hasBudget ? out : inn;
+        const other = hasBudget ? inn : out;
         const budget = hasBudget ? numOr0(tracker().budgets[c.id]) : 0;
         const pct = hasBudget && budget > 0 ? (actual / budget) * 100 : (hasBudget && actual > 0 ? 100 : 0);
-        return { category: c, hasBudget, actual, budget, pct };
+        return { category: c, hasBudget, actual, other, budget, pct, isGroup: !isLeafCategory(c) };
       })
       .sort((a, b) => (b.hasBudget ? 1 : 0) - (a.hasBudget ? 1 : 0));
     return {
@@ -396,10 +412,14 @@
       const barCell = row.hasBudget
         ? '<div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div>'
         : "";
+      const otherHint = row.other > 0
+        ? '<br><span class="hint">+' + fmtINR(row.other) + (row.hasBudget ? " in" : " out") + "</span>"
+        : "";
+      const nameLabel = escapeHtml(row.category.name) + (row.isGroup ? " (all)" : "");
       return "<tr>" +
-        '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
+        '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span><span' + (row.isGroup ? ' style="font-weight:700;"' : "") + ">" + nameLabel + "</span></div></td>" +
         "<td>" + budgetCell + "</td>" +
-        '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
+        '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + otherHint + "</td>" +
         '<td style="min-width:110px;">' + barCell + "</td>" +
         "</tr>";
     }).join("");
