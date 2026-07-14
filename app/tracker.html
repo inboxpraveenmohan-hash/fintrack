@@ -31,6 +31,13 @@
   .month-switch .icon-btn{font-size:16px;}
   .scroll-modal{max-height:85vh;display:flex;flex-direction:column;}
   .scroll-modal .table-scroll{overflow-y:auto;flex:1;margin-top:6px;}
+  .overview-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;}
+  .seg-group{display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden;}
+  .seg-btn{border:none;background:var(--card);color:var(--muted);padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;}
+  .seg-btn+.seg-btn{border-left:1px solid var(--border);}
+  .seg-btn.active{background:var(--primary);color:#fff;}
+  .overview-canvas-box{position:relative;height:260px;margin:14px 0;}
+  .info{color:var(--blue);}
 </style>
 </head>
 <body>
@@ -65,6 +72,7 @@
     <button class="btn" id="btnExportXlsx">Export Excel</button>
     <button class="btn" id="btnManageCategories">Manage Categories</button>
     <button class="btn" id="btnManageTransfers">Manage Transfers</button>
+    <button class="btn" id="btnOverview">Overview</button>
     <div class="month-switch">
       <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
       <span id="monthLabel"></span>
@@ -217,6 +225,32 @@
     </div>
     <div class="modal-actions">
       <button class="btn" id="transfersClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="overviewBackdrop">
+  <div class="modal scroll-modal" style="max-width:820px;">
+    <h3>Category Overview</h3>
+    <p>Net activity (Out − In) per top-level category, over time — switch views to compare week to week, month to month, or year to year.</p>
+    <div class="overview-controls">
+      <div class="seg-group" id="overviewModeGroup">
+        <button class="seg-btn" data-mode="week">Week</button>
+        <button class="seg-btn" data-mode="month">Month</button>
+        <button class="seg-btn active" data-mode="year">Year</button>
+      </div>
+      <select class="cell-input" id="overviewYear" style="width:auto;"></select>
+      <select class="cell-input" id="overviewMonth" style="width:auto;"></select>
+    </div>
+    <div class="overview-canvas-box"><canvas id="overviewChart"></canvas></div>
+    <div class="table-scroll">
+      <table id="overviewTable">
+        <thead><tr id="overviewTableHead"></tr></thead>
+        <tbody id="overviewTableBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="overviewClose">Done</button>
     </div>
   </div>
 </div>

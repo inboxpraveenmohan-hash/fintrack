@@ -24,6 +24,8 @@
   // redraw — everything else updates for free via CSS custom properties.
   window.onThemeChange = () => {
     if (typeof renderCharts === "function") renderCharts(computeDerivedTracker());
+    const ob = document.getElementById("overviewBackdrop");
+    if (ob && ob.classList.contains("show") && typeof renderOverview === "function") renderOverview();
   };
 
   let idCounter = 0;
@@ -141,6 +143,10 @@
   let sortOrder = "newest"; // "newest" | "oldest"
   let chartTopLevel = null;
   let chartCategory = null;
+  let overviewChart = null;
+  let overviewMode = "year"; // "week" | "month" | "year"
+  let overviewYear = null;
+  let overviewMonth = null; // "01".."12" — only used in "week" mode
 
   let storageWarned = false;
   function persist() {
@@ -466,6 +472,148 @@
       if (amt > 0) { subLabels.push(c.name); subData.push(amt); subColors.push(PALETTE[i % PALETTE.length]); }
     });
     chartCategory = draw(chartCategory, "chartCategory", subLabels, subData, subColors);
+  }
+
+  // ---------- Category Overview modal (week/month/year, all-time — not scoped to selectedMonth) ----------
+  const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function availableYears() {
+    const years = Array.from(new Set(tracker().transactions.map((t) => (t.date || "").slice(0, 4)).filter(Boolean))).sort();
+    return years.length ? years : [String(new Date().getFullYear())];
+  }
+
+  // Same net-out-minus-in convention as Budget vs Actual, but per top-level category and bucketed
+  // by week/month/year instead of per-leaf-category for a single month — "actual" is always a
+  // non-negative magnitude, with netNegative marking a bucket where In outweighed Out.
+  function computeOverviewData(mode, year, month) {
+    const topLevels = tracker().categories.filter((c) => !c.parentId);
+    const txns = tracker().transactions;
+
+    let buckets;
+    if (mode === "year") {
+      buckets = availableYears().map((y) => ({ key: y, label: y }));
+    } else if (mode === "month") {
+      buckets = MONTH_NAMES.map((name, i) => ({ key: year + "-" + String(i + 1).padStart(2, "0"), label: name }));
+    } else {
+      const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+      const weekCount = Math.ceil(daysInMonth / 7);
+      buckets = Array.from({ length: weekCount }, (_, i) => ({ key: String(i + 1), label: "Week " + (i + 1) }));
+    }
+    const bucketIndex = {};
+    buckets.forEach((b, i) => { bucketIndex[b.key] = i; });
+
+    function inScope(t) {
+      if (!t.date) return false;
+      if (mode === "year") return true;
+      if (mode === "month") return t.date.slice(0, 4) === year;
+      return t.date.slice(0, 7) === (year + "-" + month);
+    }
+    function bucketKeyOf(t) {
+      if (mode === "year") return t.date.slice(0, 4);
+      if (mode === "month") return t.date.slice(0, 7);
+      const day = Number(t.date.slice(8, 10));
+      return String(Math.floor((day - 1) / 7) + 1);
+    }
+
+    const sums = topLevels.map((tl) => ({ topLevel: tl, out: new Array(buckets.length).fill(0), in: new Array(buckets.length).fill(0) }));
+    const sumByTop = {};
+    sums.forEach((s) => { sumByTop[s.topLevel.id] = s; });
+
+    txns.forEach((t) => {
+      if (!inScope(t)) return;
+      const cat = findCategory(t.categoryId);
+      if (!cat) return;
+      const s = sumByTop[topLevelOf(cat).id];
+      if (!s) return;
+      const idx = bucketIndex[bucketKeyOf(t)];
+      if (idx === undefined) return;
+      if (t.direction === "in") s.in[idx] += t.amount; else s.out[idx] += t.amount;
+    });
+
+    const series = sums.map((s) => ({
+      topLevel: s.topLevel,
+      points: buckets.map((b, i) => {
+        const net = s.out[i] - s.in[i];
+        return { actual: Math.abs(net), netNegative: net < 0 };
+      })
+    }));
+
+    return { buckets, series };
+  }
+
+  function populateOverviewPickers() {
+    const years = availableYears();
+    if (!overviewYear || !years.includes(overviewYear)) overviewYear = years[years.length - 1];
+    if (!overviewMonth) overviewMonth = selectedMonth.slice(5, 7);
+    document.getElementById("overviewYear").innerHTML = years
+      .map((y) => '<option value="' + y + '"' + (y === overviewYear ? " selected" : "") + ">" + y + "</option>").join("");
+    document.getElementById("overviewMonth").innerHTML = MONTH_NAMES
+      .map((name, i) => {
+        const v = String(i + 1).padStart(2, "0");
+        return '<option value="' + v + '"' + (v === overviewMonth ? " selected" : "") + ">" + name + "</option>";
+      }).join("");
+    document.getElementById("overviewYear").style.display = overviewMode === "year" ? "none" : "";
+    document.getElementById("overviewMonth").style.display = overviewMode === "week" ? "" : "none";
+    document.querySelectorAll("#overviewModeGroup .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === overviewMode));
+  }
+
+  function renderOverview() {
+    populateOverviewPickers();
+    const data = computeOverviewData(overviewMode, overviewYear, overviewMonth);
+    const topLevelIds = tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
+
+    const cs = getComputedStyle(document.documentElement);
+    const mutedColor = cs.getPropertyValue("--muted").trim();
+    const blueColor = cs.getPropertyValue("--blue").trim();
+    const gridColor = cs.getPropertyValue("--row-line").trim();
+
+    if (overviewChart) { overviewChart.destroy(); overviewChart = null; }
+    if (data.buckets.length && data.series.length) {
+      const datasets = data.series.map((s) => {
+        const idx = topLevelIds.indexOf(s.topLevel.id);
+        const color = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+        return {
+          label: s.topLevel.name,
+          data: s.points.map((p) => p.actual),
+          backgroundColor: s.points.map((p) => (p.netNegative ? blueColor : color))
+        };
+      });
+      const ctx = document.getElementById("overviewChart").getContext("2d");
+      overviewChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: data.buckets.map((b) => b.label), datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: mutedColor, font: { size: 10 } }, grid: { display: false } },
+            y: {
+              ticks: {
+                color: mutedColor, font: { size: 10 },
+                callback: (v) => v >= 100000 ? (v / 100000) + "L" : v >= 1000 ? (v / 1000) + "k" : v
+              },
+              grid: { color: gridColor }
+            }
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } },
+            tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + fmtINR(c.parsed.y) } }
+          }
+        }
+      });
+    }
+
+    const head = '<th class="left">Period</th>' + data.series.map((s) => "<th>" + escapeHtml(s.topLevel.name) + "</th>").join("");
+    document.getElementById("overviewTableHead").innerHTML = head;
+    const bodyRows = data.buckets.map((b, i) => {
+      const cells = data.series.map((s) => {
+        const p = s.points[i];
+        const cls = p.netNegative ? "info" : (p.actual > 0 ? "pos" : "neu");
+        return '<td class="' + cls + '">' + (p.actual > 0 ? fmtINR(p.actual) : "—") + "</td>";
+      }).join("");
+      return '<tr><td class="left">' + escapeHtml(b.label) + "</td>" + cells + "</tr>";
+    }).join("");
+    document.getElementById("overviewTableBody").innerHTML = bodyRows ||
+      '<tr><td colspan="' + (data.series.length + 1) + '" class="empty-msg">No categories yet.</td></tr>';
   }
 
   function acctOptions(selectedId) {
@@ -799,6 +947,28 @@
     });
     document.getElementById("transfersClose").addEventListener("click", () => {
       document.getElementById("transfersBackdrop").classList.remove("show");
+    });
+
+    document.getElementById("btnOverview").addEventListener("click", () => {
+      renderOverview();
+      document.getElementById("overviewBackdrop").classList.add("show");
+    });
+    document.getElementById("overviewClose").addEventListener("click", () => {
+      document.getElementById("overviewBackdrop").classList.remove("show");
+    });
+    document.getElementById("overviewModeGroup").addEventListener("click", (e) => {
+      const btn = e.target.closest(".seg-btn");
+      if (!btn) return;
+      overviewMode = btn.dataset.mode;
+      renderOverview();
+    });
+    document.getElementById("overviewYear").addEventListener("change", (e) => {
+      overviewYear = e.target.value;
+      renderOverview();
+    });
+    document.getElementById("overviewMonth").addEventListener("change", (e) => {
+      overviewMonth = e.target.value;
+      renderOverview();
     });
 
     document.getElementById("txnSearch").addEventListener("input", (e) => {
