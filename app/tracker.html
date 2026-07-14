@@ -38,6 +38,13 @@
   .seg-btn.active{background:var(--primary);color:#fff;}
   .overview-canvas-box{position:relative;height:260px;margin:14px 0;}
   .info{color:var(--blue);}
+  .chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+  .chart-card-head h3{margin:0;}
+  .chart-card-head .icon-btn{font-size:15px;flex-shrink:0;}
+  .chart-customize-actions{display:flex;gap:8px;margin:2px 0 10px;}
+  .chart-customize-group{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;}
+  .chart-customize-group:first-child{margin-top:0;}
+  .chart-customize-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;}
 </style>
 </head>
 <body>
@@ -84,11 +91,17 @@
 
   <div class="charts">
     <div class="chart-card">
-      <h3>By Top-Level Category — <span id="donutMonthLabel"></span></h3>
+      <div class="chart-card-head">
+        <h3>By Top-Level Category — <span id="donutMonthLabel"></span></h3>
+        <button class="icon-btn" id="btnCustomizeTopLevel" data-target="topLevel" title="Choose categories shown in this chart">⚙</button>
+      </div>
       <div class="canvas-box"><canvas id="chartTopLevel"></canvas></div>
     </div>
     <div class="chart-card">
-      <h3>By Category — <span id="donutMonthLabel2"></span></h3>
+      <div class="chart-card-head">
+        <h3>By Category — <span id="donutMonthLabel2"></span></h3>
+        <button class="icon-btn" id="btnCustomizeCategory" data-target="category" title="Choose categories shown in this chart">⚙</button>
+      </div>
       <div class="canvas-box"><canvas id="chartCategory"></canvas></div>
     </div>
   </div>
@@ -250,6 +263,21 @@
     </div>
     <div class="modal-actions">
       <button class="btn" id="overviewClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="chartCustomizeBackdrop">
+  <div class="modal scroll-modal" style="max-width:420px;">
+    <h3 id="chartCustomizeTitle">Choose categories</h3>
+    <p id="chartCustomizeDesc"></p>
+    <div class="chart-customize-actions">
+      <button class="btn" id="chartCustomizeSelectAll" style="padding:5px 10px;font-size:11px;">Select All</button>
+      <button class="btn" id="chartCustomizeClearAll" style="padding:5px 10px;font-size:11px;">Clear All</button>
+    </div>
+    <div class="table-scroll" id="chartCustomizeList"></div>
+    <div class="modal-actions">
+      <button class="btn" id="chartCustomizeClose">Done</button>
     </div>
   </div>
 </div>

@@ -62,7 +62,7 @@
   }
 
   function seedTracker() {
-    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {} };
+    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {}, chartExclusions: { topLevel: [], category: [] } };
   }
 
   function isValidTracker(t) {
@@ -130,6 +130,16 @@
       if (!isValidTracker(parsed.dailyTracker)) {
         parsed.dailyTracker = migrateOldTracker(parsed.dailyTracker) || seedTracker();
       }
+      // Backfilled separately from isValidTracker() above, since an already-valid tracker saved
+      // before this feature existed would otherwise never gain the field (or would be wrongly
+      // treated as corrupt and reseeded, discarding real data, if it were added to that check).
+      const ce = parsed.dailyTracker.chartExclusions;
+      if (!ce || typeof ce !== "object" || Array.isArray(ce)) {
+        parsed.dailyTracker.chartExclusions = { topLevel: [], category: [] };
+      } else {
+        if (!Array.isArray(ce.topLevel)) ce.topLevel = [];
+        if (!Array.isArray(ce.category)) ce.category = [];
+      }
       return parsed;
     } catch (e) {
       return { dailyTracker: seedTracker() };
@@ -147,6 +157,7 @@
   let overviewMode = "year"; // "week" | "month" | "year"
   let overviewYear = null;
   let overviewMonth = null; // "01".."12" — only used in "week" mode
+  let chartCustomizeTarget = null; // "topLevel" | "category" — which donut chart the modal is editing
 
   let storageWarned = false;
   function persist() {
@@ -459,19 +470,45 @@
       });
     }
 
+    const excl = tracker().chartExclusions;
     const topLabels = [], topData = [], topColors = [];
     tracker().categories.filter((c) => !c.parentId).forEach((c, i) => {
       const amt = d.spendByTopLevel[c.id] || 0;
-      if (amt > 0) { topLabels.push(c.name); topData.push(amt); topColors.push(PALETTE[i % PALETTE.length]); }
+      if (amt > 0 && !excl.topLevel.includes(c.id)) { topLabels.push(c.name); topData.push(amt); topColors.push(PALETTE[i % PALETTE.length]); }
     });
     chartTopLevel = draw(chartTopLevel, "chartTopLevel", topLabels, topData, topColors);
 
     const subLabels = [], subData = [], subColors = [];
     tracker().categories.filter((c) => isLeafCategory(c) && !c.archived).forEach((c, i) => {
       const amt = d.spendBySub[c.id] || 0;
-      if (amt > 0) { subLabels.push(c.name); subData.push(amt); subColors.push(PALETTE[i % PALETTE.length]); }
+      if (amt > 0 && !excl.category.includes(c.id)) { subLabels.push(c.name); subData.push(amt); subColors.push(PALETTE[i % PALETTE.length]); }
     });
     chartCategory = draw(chartCategory, "chartCategory", subLabels, subData, subColors);
+  }
+
+  // ---------- Chart customization modal (which categories show in each donut) ----------
+  function chartCustomizeRow(c, excludedIds) {
+    const checked = !excludedIds.includes(c.id);
+    return '<label class="chart-customize-row"><input type="checkbox" data-chart-cat-id="' + c.id + '"' + (checked ? " checked" : "") + ">" + escapeHtml(c.name) + "</label>";
+  }
+
+  function renderChartCustomizeModal() {
+    const target = chartCustomizeTarget;
+    const excludedIds = tracker().chartExclusions[target];
+    document.getElementById("chartCustomizeTitle").textContent = target === "topLevel" ? "By Top-Level Category chart" : "By Category chart";
+    document.getElementById("chartCustomizeDesc").textContent = "Uncheck a category to hide it from this chart only — nothing else about it changes.";
+
+    let html;
+    if (target === "topLevel") {
+      html = tracker().categories.filter((c) => !c.parentId).map((c) => chartCustomizeRow(c, excludedIds)).join("");
+    } else {
+      html = tracker().categories.filter((c) => !c.parentId).map((top) => {
+        const subs = tracker().categories.filter((c) => c.parentId === top.id && !c.archived);
+        if (subs.length === 0) return "";
+        return '<div class="chart-customize-group">' + escapeHtml(top.name) + "</div>" + subs.map((c) => chartCustomizeRow(c, excludedIds)).join("");
+      }).join("");
+    }
+    document.getElementById("chartCustomizeList").innerHTML = html || '<p class="empty-msg">No categories yet.</p>';
   }
 
   // ---------- Category Overview modal (week/month/year, all-time — not scoped to selectedMonth) ----------
@@ -973,6 +1010,44 @@
     document.getElementById("overviewMonth").addEventListener("change", (e) => {
       overviewMonth = e.target.value;
       renderOverview();
+    });
+
+    document.querySelectorAll("[data-target].icon-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        chartCustomizeTarget = btn.dataset.target;
+        renderChartCustomizeModal();
+        document.getElementById("chartCustomizeBackdrop").classList.add("show");
+      });
+    });
+    document.getElementById("chartCustomizeClose").addEventListener("click", () => {
+      document.getElementById("chartCustomizeBackdrop").classList.remove("show");
+    });
+    document.getElementById("chartCustomizeSelectAll").addEventListener("click", () => {
+      tracker().chartExclusions[chartCustomizeTarget] = [];
+      persist();
+      renderChartCustomizeModal();
+      renderCharts(computeDerivedTracker());
+    });
+    document.getElementById("chartCustomizeClearAll").addEventListener("click", () => {
+      const target = chartCustomizeTarget;
+      const ids = target === "topLevel"
+        ? tracker().categories.filter((c) => !c.parentId).map((c) => c.id)
+        : tracker().categories.filter((c) => isLeafCategory(c) && !c.archived).map((c) => c.id);
+      tracker().chartExclusions[target] = ids;
+      persist();
+      renderChartCustomizeModal();
+      renderCharts(computeDerivedTracker());
+    });
+    document.getElementById("chartCustomizeList").addEventListener("change", (e) => {
+      const t = e.target;
+      if (!t.dataset || !t.dataset.chartCatId) return;
+      const id = t.dataset.chartCatId;
+      const arr = tracker().chartExclusions[chartCustomizeTarget];
+      const idx = arr.indexOf(id);
+      if (t.checked && idx !== -1) arr.splice(idx, 1);
+      else if (!t.checked && idx === -1) arr.push(id);
+      persist();
+      renderCharts(computeDerivedTracker());
     });
 
     document.getElementById("txnSearch").addEventListener("input", (e) => {
