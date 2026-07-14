@@ -282,16 +282,19 @@
     });
     // Every non-archived leaf category is listed, even with zero activity and no budget yet —
     // otherwise there'd be no row to type a budget into before you've spent anything in it.
-    // Categories with budgeting turned off (Manage Categories) — typically income ones — show
-    // their income total instead, with no budget/bar, since a budget target doesn't apply to them.
+    // "Actual" is always the net of out minus in, shown as a non-negative magnitude — a rare
+    // refund reduces effective spend rather than being hidden. When in exceeds out (net inflow),
+    // netNegative flags it so the bar renders in a distinct color instead of the normal/over ones.
     const budgetRows = tracker().categories
       .filter((c) => !c.archived && isLeafCategory(c))
       .map((c) => {
         const hasBudget = c.hasBudget !== false;
-        const actual = hasBudget ? (spendBySub[c.id] || 0) : (incomeBySub[c.id] || 0);
+        const net = (spendBySub[c.id] || 0) - (incomeBySub[c.id] || 0);
+        const actual = Math.abs(net);
+        const netNegative = net < 0;
         const budget = hasBudget ? numOr0(tracker().budgets[c.id]) : 0;
         const pct = hasBudget && budget > 0 ? (actual / budget) * 100 : (hasBudget && actual > 0 ? 100 : 0);
-        return { category: c, hasBudget, actual, budget, pct };
+        return { category: c, hasBudget, actual, netNegative, budget, pct };
       })
       .sort((a, b) => (b.hasBudget ? 1 : 0) - (a.hasBudget ? 1 : 0));
     return {
@@ -389,12 +392,13 @@
     }
     document.getElementById("budgetBody").innerHTML = d.budgetRows.map((row, i) => {
       const barPct = Math.min(row.pct, 100);
-      const over = row.hasBudget && row.budget > 0 && row.pct > 100;
+      const over = row.hasBudget && row.budget > 0 && row.pct > 100 && !row.netNegative;
       const budgetCell = row.hasBudget
         ? '<input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '">'
-        : '<span class="hint">— no budget —</span>';
+        : "";
+      const barClass = row.netNegative ? " negative" : (over ? " over" : "");
       const barCell = row.hasBudget
-        ? '<div class="budget-bar-track"><div class="budget-bar-fill' + (over ? " over" : "") + '" style="width:' + barPct + '%"></div></div>'
+        ? '<div class="budget-bar-track"><div class="budget-bar-fill' + barClass + '" style="width:' + barPct + '%"></div></div>'
         : "";
       return "<tr>" +
         '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
@@ -539,18 +543,23 @@
   }
 
   function renderCategoriesModal() {
+    // Budget targets only make sense on a leaf category (transactions are filed there, never
+    // directly on a top-level group) — the checkbox is simply absent on a top-level row.
     const rows = tracker().categories.map((c) => {
+      const budgetCell = c.parentId
+        ? '<input type="checkbox" data-type="category" data-id="' + c.id + '" data-field="hasBudget"' + (c.hasBudget !== false ? " checked" : "") + ">"
+        : "";
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="category" data-id="' + c.id + '" data-field="name" value="' + escapeAttr(c.name) + '"' + (c.archived ? ' style="opacity:.5;"' : "") + "></td>" +
         '<td class="left"><select class="cell-input" style="width:auto;" data-type="category" data-id="' + c.id + '" data-field="parentId">' + parentSelectOptions(tracker().categories, c.parentId, c.id) + "</select></td>" +
-        '<td><input type="checkbox" data-type="category" data-id="' + c.id + '" data-field="hasBudget"' + (c.hasBudget !== false ? " checked" : "") + "></td>" +
+        "<td>" + budgetCell + "</td>" +
         '<td><button class="btn" style="padding:4px 8px;font-size:11px;" data-action="toggle-archive-category" data-id="' + c.id + '">' + (c.archived ? "Unarchive" : "Archive") + "</button> " +
         '<button class="icon-btn" data-action="delete-category" data-id="' + c.id + '" title="Delete category">✕</button></td>' +
         "</tr>";
     }).join("");
     const addRow = '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New category name" id="newCategoryName"></td>' +
       '<td class="left"><select class="cell-input" style="width:auto;" id="newCategoryParent">' + parentSelectOptions(tracker().categories, null, null) + "</select></td>" +
-      '<td><input type="checkbox" id="newCategoryHasBudget" checked></td>' +
+      '<td><span id="newCategoryBudgetWrap" style="visibility:hidden;"><input type="checkbox" id="newCategoryHasBudget" checked></span></td>' +
       '<td><button class="btn primary" style="padding:4px 8px;font-size:11px;" data-action="add-category">+ Add</button></td></tr>';
     document.getElementById("categoriesBody").innerHTML = rows + addRow;
   }
@@ -638,7 +647,7 @@
       let cat = catByName[catName.toLowerCase()];
       if (!cat) {
         const parent = direction === "in" ? incomeGroup : expenseGroup;
-        cat = { id: uid("cat"), name: catName, parentId: parent ? parent.id : null, archived: false, hasBudget: direction === "out" };
+        cat = { id: uid("cat"), name: catName, parentId: parent ? parent.id : null, archived: false, hasBudget: !!parent && direction === "out" };
         dt.categories.push(cat);
         catByName[catName.toLowerCase()] = cat;
       }
@@ -791,6 +800,11 @@
 
     document.body.addEventListener("change", (e) => {
       const t = e.target;
+      if (t.id === "newCategoryParent") {
+        const wrap = document.getElementById("newCategoryBudgetWrap");
+        if (wrap) wrap.style.visibility = t.value ? "visible" : "hidden";
+        return;
+      }
       if (!t.dataset || !t.dataset.field) return;
       const type = t.dataset.type;
       const id = t.dataset.id;
@@ -823,6 +837,7 @@
         if (!c) return;
         if (field === "parentId" && val === id) { toast("A category can't be its own parent."); renderCategoriesModal(); return; }
         c[field] = field === "parentId" ? (val || null) : val;
+        if (field === "parentId" && !c.parentId) c.hasBudget = false; // no budget toggle for top-level groups
         persist();
         renderCategoriesModal();
       } else if (type === "budget") {
@@ -916,7 +931,7 @@
         const name = document.getElementById("newCategoryName").value.trim();
         if (!name) { toast("Enter a name for the new category."); return; }
         const parentId = document.getElementById("newCategoryParent").value || null;
-        const hasBudget = document.getElementById("newCategoryHasBudget").checked;
+        const hasBudget = parentId ? document.getElementById("newCategoryHasBudget").checked : false;
         tracker().categories.push({ id: uid("cat"), name, parentId, archived: false, hasBudget });
         persist();
         renderCategoriesModal();
