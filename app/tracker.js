@@ -285,21 +285,34 @@
     // "Actual" is always the net of out minus in, shown as a non-negative magnitude — a rare
     // refund reduces effective spend rather than being hidden. When in exceeds out (net inflow),
     // netNegative flags it so the bar renders in a distinct color instead of the normal/over ones.
-    const budgetRows = tracker().categories
+    // Rows are grouped by top-level category (in the order that group first appears), and within
+    // each group sorted by descending actual — recomputed on every render, so the order always
+    // reflects the currently-selected month's activity rather than a stored/static ordering.
+    const budgetGroups = [];
+    const groupByTopId = {};
+    tracker().categories
       .filter((c) => !c.archived && isLeafCategory(c))
-      .map((c) => {
+      .forEach((c) => {
         const hasBudget = c.hasBudget !== false;
         const net = (spendBySub[c.id] || 0) - (incomeBySub[c.id] || 0);
         const actual = Math.abs(net);
         const netNegative = net < 0;
         const budget = hasBudget ? numOr0(tracker().budgets[c.id]) : 0;
         const pct = hasBudget && budget > 0 ? (actual / budget) * 100 : (hasBudget && actual > 0 ? 100 : 0);
-        return { category: c, hasBudget, actual, netNegative, budget, pct };
-      })
-      .sort((a, b) => (b.hasBudget ? 1 : 0) - (a.hasBudget ? 1 : 0));
+        const row = { category: c, hasBudget, actual, netNegative, budget, pct };
+        const top = topLevelOf(c);
+        let group = groupByTopId[top.id];
+        if (!group) {
+          group = { topLevel: top, rows: [] };
+          groupByTopId[top.id] = group;
+          budgetGroups.push(group);
+        }
+        group.rows.push(row);
+      });
+    budgetGroups.forEach((g) => g.rows.sort((a, b) => b.actual - a.actual));
     return {
       monthTxns, monthTransfers, totalIncome, totalExpense, net: totalIncome - totalExpense,
-      txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetRows, balances: computeAccountBalances()
+      txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetGroups, balances: computeAccountBalances()
     };
   }
 
@@ -386,26 +399,38 @@
   }
 
   function renderBudget(d) {
-    if (d.budgetRows.length === 0) {
+    const totalRows = d.budgetGroups.reduce((n, g) => n + g.rows.length, 0);
+    if (totalRows === 0) {
       document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No categories yet — add one via Manage Categories.</td></tr>';
       return;
     }
-    document.getElementById("budgetBody").innerHTML = d.budgetRows.map((row, i) => {
-      const barPct = Math.min(row.pct, 100);
-      const over = row.hasBudget && row.budget > 0 && row.pct > 100 && !row.netNegative;
-      const budgetCell = row.hasBudget
-        ? '<input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '">'
-        : "";
-      const barClass = row.netNegative ? " negative" : (over ? " over" : "");
-      const barCell = row.hasBudget
-        ? '<div class="budget-bar-track"><div class="budget-bar-fill' + barClass + '" style="width:' + barPct + '%"></div></div>'
-        : "";
-      return "<tr>" +
-        '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
-        "<td>" + budgetCell + "</td>" +
-        '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
-        '<td style="min-width:110px;">' + barCell + "</td>" +
-        "</tr>";
+    // Top-level accent bar color matches that group's own color in the "By Top-Level Category"
+    // chart (same PALETTE, same index order) — see renderCharts() below.
+    const topLevelIds = tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
+    let i = 0;
+    document.getElementById("budgetBody").innerHTML = d.budgetGroups.map((g) => {
+      const topIdx = topLevelIds.indexOf(g.topLevel.id);
+      const topColor = PALETTE[(topIdx < 0 ? 0 : topIdx) % PALETTE.length];
+      const header = '<tr class="budget-group-head"><td colspan="4"><span class="accent-bar" style="background:' + topColor + '"></span>' + escapeHtml(g.topLevel.name) + "</td></tr>";
+      const rows = g.rows.map((row) => {
+        const idx = i++;
+        const barPct = Math.min(row.pct, 100);
+        const over = row.hasBudget && row.budget > 0 && row.pct > 100 && !row.netNegative;
+        const budgetCell = row.hasBudget
+          ? '<input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '">'
+          : "";
+        const barClass = row.netNegative ? " negative" : (over ? " over" : "");
+        const barCell = row.hasBudget
+          ? '<div class="budget-bar-track"><div class="budget-bar-fill' + barClass + '" style="width:' + barPct + '%"></div></div>'
+          : "";
+        return "<tr>" +
+          '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[idx % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
+          "<td>" + budgetCell + "</td>" +
+          '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
+          '<td style="min-width:110px;">' + barCell + "</td>" +
+          "</tr>";
+      }).join("");
+      return header + rows;
     }).join("");
   }
 
