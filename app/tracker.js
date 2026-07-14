@@ -484,7 +484,7 @@
 
   // Same net-out-minus-in convention as Budget vs Actual, but per top-level category and bucketed
   // by week/month/year instead of per-leaf-category for a single month — "actual" is always a
-  // non-negative magnitude, with netNegative marking a bucket where In outweighed Out.
+  // non-negative magnitude (a category dominated by "In", like Income, still just shows its size).
   function computeOverviewData(mode, year, month) {
     const topLevels = tracker().categories.filter((c) => !c.parentId);
     const txns = tracker().transactions;
@@ -534,7 +534,7 @@
       topLevel: s.topLevel,
       points: buckets.map((b, i) => {
         const net = s.out[i] - s.in[i];
-        return { actual: Math.abs(net), netNegative: net < 0 };
+        return { actual: Math.abs(net) };
       })
     }));
 
@@ -564,20 +564,24 @@
 
     const cs = getComputedStyle(document.documentElement);
     const mutedColor = cs.getPropertyValue("--muted").trim();
-    const blueColor = cs.getPropertyValue("--blue").trim();
     const gridColor = cs.getPropertyValue("--row-line").trim();
+
+    // Each top-level category keeps one consistent color everywhere it appears — chart bars,
+    // legend swatch, and the table cells below — rather than swapping per-bar, which made the
+    // legend (one fixed swatch per dataset) mismatch bars that had switched to a different color.
+    const colorByTopId = {};
+    data.series.forEach((s) => {
+      const idx = topLevelIds.indexOf(s.topLevel.id);
+      colorByTopId[s.topLevel.id] = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+    });
 
     if (overviewChart) { overviewChart.destroy(); overviewChart = null; }
     if (data.buckets.length && data.series.length) {
-      const datasets = data.series.map((s) => {
-        const idx = topLevelIds.indexOf(s.topLevel.id);
-        const color = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
-        return {
-          label: s.topLevel.name,
-          data: s.points.map((p) => p.actual),
-          backgroundColor: s.points.map((p) => (p.netNegative ? blueColor : color))
-        };
-      });
+      const datasets = data.series.map((s) => ({
+        label: s.topLevel.name,
+        data: s.points.map((p) => p.actual),
+        backgroundColor: colorByTopId[s.topLevel.id]
+      }));
       const ctx = document.getElementById("overviewChart").getContext("2d");
       overviewChart = new Chart(ctx, {
         type: "bar",
@@ -607,8 +611,8 @@
     const bodyRows = data.buckets.map((b, i) => {
       const cells = data.series.map((s) => {
         const p = s.points[i];
-        const cls = p.netNegative ? "info" : (p.actual > 0 ? "pos" : "neu");
-        return '<td class="' + cls + '">' + (p.actual > 0 ? fmtINR(p.actual) : "—") + "</td>";
+        const style = p.actual > 0 ? ' style="color:' + colorByTopId[s.topLevel.id] + '"' : "";
+        return "<td" + (p.actual > 0 ? style : ' class="neu"') + ">" + (p.actual > 0 ? fmtINR(p.actual) : "—") + "</td>";
       }).join("");
       return '<tr><td class="left">' + escapeHtml(b.label) + "</td>" + cells + "</tr>";
     }).join("");
