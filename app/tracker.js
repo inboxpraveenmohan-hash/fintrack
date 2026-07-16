@@ -35,12 +35,16 @@
   }
 
   // ---------- seed data ----------
+  // openingBalance is the fallback used for any month with no entry of its own in
+  // openingBalances (keyed "YYYY-MM") — effectively "the balance before tracking began". Every
+  // month's balance is otherwise independent, set either by editing that month's field directly
+  // or via "Copy Previous Month's Balances".
   function defaultAccounts() {
     return [
-      { id: uid("acct"), name: "SALARY", openingBalance: 0 },
-      { id: uid("acct"), name: "SAVINGS", openingBalance: 0 },
-      { id: uid("acct"), name: "CASH", openingBalance: 0 },
-      { id: uid("acct"), name: "CC", openingBalance: 0 }
+      { id: uid("acct"), name: "SALARY", openingBalance: 0, openingBalances: {} },
+      { id: uid("acct"), name: "SAVINGS", openingBalance: 0, openingBalances: {} },
+      { id: uid("acct"), name: "CASH", openingBalance: 0, openingBalances: {} },
+      { id: uid("acct"), name: "CC", openingBalance: 0, openingBalances: {} }
     ];
   }
 
@@ -160,6 +164,14 @@
         if (!Array.isArray(ce.totalExpenses)) ce.totalExpenses = [];
         if (!Array.isArray(ce.totalSavings)) ce.totalSavings = defaultSavingsExclusions(parsed.dailyTracker.categories);
       }
+      // Every account needs its own per-month map (added when Accounts became month-scoped) —
+      // an empty one is a no-op: effectiveOpeningBalance() just keeps falling back to the
+      // account's existing openingBalance for every month until one is explicitly set.
+      (parsed.dailyTracker.accounts || []).forEach((a) => {
+        if (!a.openingBalances || typeof a.openingBalances !== "object" || Array.isArray(a.openingBalances)) {
+          a.openingBalances = {};
+        }
+      });
       return parsed;
     } catch (e) {
       return { dailyTracker: seedTracker() };
@@ -266,7 +278,7 @@
     });
   }
 
-  // ---------- account balances (all-time, not scoped to the selected month) ----------
+  // ---------- account balances (scoped to the selected month — see computeAccountBalances) ----------
   // Every account uses the same plain formula: opening balance + in − out. There's no separate
   // asset/liability type — a credit card account just goes negative as you spend on it (that
   // negative number *is* what's owed) and comes back toward zero as you pay it down via a
@@ -289,11 +301,24 @@
     balances[to.id] = (balances[to.id] || 0) + tr.amount;
   }
 
-  function computeAccountBalances() {
+  // Opening balance for a given month: an explicit value set for that exact month (typed
+  // directly, or via "Copy Previous Month's Balances"), falling back to the account's single
+  // base openingBalance for any month that's never had one set.
+  function effectiveOpeningBalance(acct, month) {
+    if (acct.openingBalances && Object.prototype.hasOwnProperty.call(acct.openingBalances, month)) {
+      return numOr0(acct.openingBalances[month]);
+    }
+    return numOr0(acct.openingBalance);
+  }
+
+  // Scoped to one month — opening balance for that month plus only that month's own
+  // transactions/transfers, mirroring a real monthly bank statement (opening + this month's
+  // activity = closing), rather than an all-time running total.
+  function computeAccountBalances(month) {
     const balances = {};
-    tracker().accounts.forEach((a) => { balances[a.id] = numOr0(a.openingBalance); });
-    tracker().transactions.forEach((txn) => applyTxnToBalances(balances, txn));
-    tracker().transfers.forEach((tr) => applyTransferToBalances(balances, tr));
+    tracker().accounts.forEach((a) => { balances[a.id] = effectiveOpeningBalance(a, month); });
+    tracker().transactions.filter((t) => t.date && t.date.slice(0, 7) === month).forEach((txn) => applyTxnToBalances(balances, txn));
+    tracker().transfers.filter((t) => t.date && t.date.slice(0, 7) === month).forEach((tr) => applyTransferToBalances(balances, tr));
     return balances;
   }
 
@@ -358,7 +383,7 @@
     budgetGroups.forEach((g) => g.rows.sort((a, b) => b.actual - a.actual));
     return {
       monthTxns, monthTransfers, totalIncome, totalExpense, totalSavings,
-      txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetGroups, balances: computeAccountBalances()
+      txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetGroups, balances: computeAccountBalances(selectedMonth)
     };
   }
 
@@ -383,6 +408,7 @@
     document.getElementById("monthSubtitle").textContent = label + " overview";
     document.getElementById("donutMonthLabel").textContent = label;
     document.getElementById("donutMonthLabel2").textContent = label;
+    document.getElementById("accountsMonthLabel").textContent = label;
   }
 
   function card(label, value, hintHtml, actionBtnHtml) {
@@ -399,7 +425,7 @@
       const balText = bal < 0 ? "-" + fmtINR(Math.abs(bal)) : fmtINR(bal);
       return "<tr>" +
         '<td class="left"><input class="cell-input name-input" data-type="account" data-id="' + a.id + '" data-field="name" value="' + escapeAttr(a.name) + '"></td>' +
-        '<td><input class="cell-input amount" type="number" step="0.01" data-type="account" data-id="' + a.id + '" data-field="openingBalance" value="' + numOr0(a.openingBalance) + '"></td>' +
+        '<td><input class="cell-input amount" type="number" step="0.01" data-type="account" data-id="' + a.id + '" data-field="openingBalanceMonth" value="' + effectiveOpeningBalance(a, selectedMonth) + '"></td>' +
         '<td class="' + balClass + '">' + balText + "</td>" +
         '<td><button class="icon-btn" data-action="delete-account" data-id="' + a.id + '" title="Delete account">✕</button></td>' +
         "</tr>";
@@ -834,10 +860,14 @@
     document.getElementById("categoriesBody").innerHTML = rows + addRow;
   }
 
-  function shiftMonth(delta) {
-    const parts = selectedMonth.split("-").map(Number);
+  function monthShifted(month, delta) {
+    const parts = month.split("-").map(Number);
     const d = new Date(parts[0], parts[1] - 1 + delta, 1);
-    selectedMonth = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+
+  function shiftMonth(delta) {
+    selectedMonth = monthShifted(selectedMonth, delta);
     renderAll();
   }
 
@@ -925,7 +955,7 @@
       const acctName = String(r.Account || "CASH").trim();
       let acct = acctByName[acctName.toLowerCase()];
       if (!acct) {
-        acct = { id: uid("acct"), name: acctName, type: "asset", openingBalance: 0 };
+        acct = { id: uid("acct"), name: acctName, openingBalance: 0, openingBalances: {} };
         dt.accounts.push(acct);
         acctByName[acctName.toLowerCase()] = acct;
       }
@@ -1120,6 +1150,23 @@
   // ---------- event wiring ----------
   document.addEventListener("DOMContentLoaded", () => {
     renderAll();
+
+    // Toolbar dropdown menus (Import / Export / Manage): toggle on the button, close on any
+    // other click — including a click on one of the menu's own items, so picking an action
+    // closes the menu too, since that click bubbles to this same document-level listener after
+    // the item's own handler (e.g. opening the file picker) has already run.
+    document.querySelectorAll("[data-menu-toggle]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const menu = document.getElementById(btn.dataset.menuToggle);
+        const isOpen = menu.classList.contains("show");
+        document.querySelectorAll(".menu-dropdown.show").forEach((m) => m.classList.remove("show"));
+        if (!isOpen) menu.classList.add("show");
+      });
+    });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".menu-dropdown.show").forEach((m) => m.classList.remove("show"));
+    });
 
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -1345,14 +1392,19 @@
       const type = t.dataset.type;
       const id = t.dataset.id;
       const field = t.dataset.field;
-      const numericFields = ["openingBalance", "amount"];
+      const numericFields = ["openingBalance", "openingBalanceMonth", "amount"];
       const checkboxFields = ["hasBudget"];
       const val = numericFields.includes(field) ? (parseFloat(t.value) || 0) : checkboxFields.includes(field) ? t.checked : t.value;
 
       if (type === "account") {
         const a = findAccount(id);
         if (!a) return;
-        a[field] = val;
+        if (field === "openingBalanceMonth") {
+          if (!a.openingBalances) a.openingBalances = {};
+          a.openingBalances[selectedMonth] = val;
+        } else {
+          a[field] = val;
+        }
         persist();
         renderAll();
       } else if (type === "txn") {
@@ -1395,9 +1447,28 @@
         const name = document.getElementById("newAccountName").value.trim();
         if (!name) { toast("Enter a name for the new account."); return; }
         const opening = parseFloat(document.getElementById("newAccountOpening").value) || 0;
-        tracker().accounts.push({ id: uid("acct"), name, openingBalance: opening });
+        tracker().accounts.push({ id: uid("acct"), name, openingBalance: opening, openingBalances: {} });
         persist();
         renderAll();
+        return;
+      }
+      if (action === "copy-previous-balances") {
+        if (tracker().accounts.length === 0) { toast("No accounts to copy."); return; }
+        const prevMonth = monthShifted(selectedMonth, -1);
+        const prevBalances = computeAccountBalances(prevMonth);
+        const ok = await confirmDialog(
+          "Copy last month's closing balances?",
+          "Sets each account's opening balance for " + fmtMonthLabel(selectedMonth) + " to its closing balance from " + fmtMonthLabel(prevMonth) + ". This overwrites any opening balance you've already set for " + fmtMonthLabel(selectedMonth) + ".",
+          "Copy", "Cancel", false
+        );
+        if (!ok) return;
+        tracker().accounts.forEach((a) => {
+          if (!a.openingBalances) a.openingBalances = {};
+          a.openingBalances[selectedMonth] = prevBalances[a.id] || 0;
+        });
+        persist();
+        renderAll();
+        toast("Opening balances copied from " + fmtMonthLabel(prevMonth) + ".");
         return;
       }
       if (action === "delete-account") {

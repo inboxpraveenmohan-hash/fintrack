@@ -74,16 +74,34 @@
   </header>
 
   <div class="toolbar">
-    <button class="btn primary" id="btnImport">Import CSV / Excel</button>
+    <div class="menu-wrap">
+      <button class="btn primary" data-menu-toggle="importMenu">Import ▾</button>
+      <div class="menu-dropdown" id="importMenu">
+        <button class="menu-item" id="btnImport">Import CSV / Excel</button>
+        <button class="menu-item" id="btnImportStatement">Import Bank Statement</button>
+        <button class="menu-item" id="btnTemplate">Download Template</button>
+      </div>
+    </div>
     <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
-    <button class="btn" id="btnImportStatement">Import Bank Statement</button>
     <input type="file" id="statementFileInput" accept=".csv,.xlsx,.xls">
-    <button class="btn" id="btnTemplate">Download Template</button>
-    <button class="btn" id="btnExportCsv">Export CSV</button>
-    <button class="btn" id="btnExportXlsx">Export Excel</button>
-    <button class="btn" id="btnManageCategories">Manage Categories</button>
-    <button class="btn" id="btnManageTransfers">Manage Transfers</button>
-    <button class="btn" id="btnOverview">Overview</button>
+
+    <div class="menu-wrap">
+      <button class="btn" data-menu-toggle="exportMenu">Export ▾</button>
+      <div class="menu-dropdown" id="exportMenu">
+        <button class="menu-item" id="btnExportCsv">Export CSV</button>
+        <button class="menu-item" id="btnExportXlsx">Export Excel</button>
+      </div>
+    </div>
+
+    <div class="menu-wrap">
+      <button class="btn" data-menu-toggle="manageMenu">Manage ▾</button>
+      <div class="menu-dropdown" id="manageMenu">
+        <button class="menu-item" id="btnManageCategories">Categories</button>
+        <button class="menu-item" id="btnManageTransfers">Transfers</button>
+      </div>
+    </div>
+
+    <button class="btn accent" id="btnOverview">Overview</button>
     <div class="month-switch">
       <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
       <span id="monthLabel"></span>
@@ -131,7 +149,8 @@
 
   <div class="section">
     <div class="section-head">
-      <h2>Accounts</h2>
+      <h2>Accounts <span style="font-weight:400;color:var(--muted);font-size:12px;">— <span id="accountsMonthLabel"></span></span></h2>
+      <button class="btn" id="btnCarryForward" data-action="copy-previous-balances" title="Set each account's opening balance for this month to its closing balance from last month">Copy Previous Month's Balances</button>
     </div>
     <div class="table-scroll">
       <table id="accountsTable">
@@ -139,7 +158,7 @@
           <tr>
             <th class="left">Name</th>
             <th>Opening Balance</th>
-            <th>Current Balance</th>
+            <th>Closing Balance</th>
             <th></th>
           </tr>
         </thead>

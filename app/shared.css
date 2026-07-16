@@ -78,8 +78,23 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;flex
 .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
 .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);color:#fff;}
 .btn.danger:hover{border-color:var(--red);color:var(--red);}
+/* Bright, distinct accent for a single button that should stand out from the rest of the
+   toolbar (e.g. Overview) — deliberately not reusing .primary's indigo, which already means
+   "the main action" elsewhere (Import). Dark text throughout since --amber swings from a deep
+   gold in light mode to a near-yellow in dark mode — white text would fail contrast on the latter. */
+.btn.accent{background:var(--amber);border-color:var(--amber);color:#1c2333;}
+.btn.accent:hover{background:var(--amber);border-color:var(--amber);color:#1c2333;opacity:.85;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 input[type=file]{display:none;}
+
+/* Toolbar dropdown menus (Import / Export / Manage) — a toggle .btn paired with an absolutely
+   positioned panel of .menu-item buttons, shown/hidden via .show and closed by the app's
+   document-level "click outside" listener. */
+.menu-wrap{position:relative;display:inline-block;}
+.menu-dropdown{position:absolute;top:calc(100% + 6px);left:0;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow);padding:4px;display:none;z-index:45;}
+.menu-dropdown.show{display:block;}
+.menu-item{display:block;width:100%;text-align:left;background:transparent;border:none;padding:8px 10px;font-size:13px;font-weight:500;color:var(--text);border-radius:6px;cursor:pointer;white-space:nowrap;}
+.menu-item:hover{background:var(--row-tint);color:var(--primary);}
 
 /* Stat cards */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
