@@ -74,6 +74,8 @@
   <div class="toolbar">
     <button class="btn primary" id="btnImport">Import CSV / Excel</button>
     <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+    <button class="btn" id="btnImportStatement">Import Bank Statement</button>
+    <input type="file" id="statementFileInput" accept=".csv,.xlsx,.xls">
     <button class="btn" id="btnTemplate">Download Template</button>
     <button class="btn" id="btnExportCsv">Export CSV</button>
     <button class="btn" id="btnExportXlsx">Export Excel</button>
@@ -306,6 +308,19 @@
     <div class="modal-actions">
       <button class="btn" id="importPreviewCancel">Cancel</button>
       <button class="btn primary" id="importPreviewConfirm" style="color:#fff;">Import</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="statementAccountBackdrop">
+  <div class="modal">
+    <h3>Import Bank Statement</h3>
+    <p>A bank statement covers one account and has no Account column of its own — pick which account these transactions belong to, then choose the file. You'll get the same review screen to check dates, amounts, and categories before anything is added.</p>
+    <select class="cell-input" id="statementAccountSelect" style="width:100%;margin-top:4px;"></select>
+    <input class="cell-input name-input" id="statementNewAccountName" placeholder="New account name" style="width:100%;margin-top:8px;display:none;">
+    <div class="modal-actions">
+      <button class="btn" id="statementAccountCancel">Cancel</button>
+      <button class="btn primary" id="statementAccountContinue" style="color:#fff;">Choose File…</button>
     </div>
   </div>
 </div>

@@ -159,6 +159,7 @@
   let overviewMonth = null; // "01".."12" — only used in "week" mode
   let chartCustomizeTarget = null; // "topLevel" | "category" — which donut chart the modal is editing
   let pendingImport = null; // { categories, accounts, transactions, newCategoryIds } — awaiting review in the import preview modal
+  let pendingStatementAccountName = null; // account chosen/typed in the statement-import account picker, before the file is chosen
 
   let storageWarned = false;
   function persist() {
@@ -918,6 +919,88 @@
     return t;
   }
 
+  // ---------- Bank statement import ----------
+  // Real bank statement exports (tested against an Axis Bank CSV) aren't the app's own tidy
+  // template — they open with several lines of account-holder preamble, the real transaction
+  // table starts wherever a "Date / Particulars / Debit / Credit" style header happens to land,
+  // and end with pages of legal disclaimer text and a legend. There's also no Account column
+  // (the whole file is one account) or Category column, so both are supplied by the caller
+  // instead of read per row. Column names are matched loosely (Dr/Debit, Cr/Credit, Particulars/
+  // Narration/Description) since Indian bank statements commonly vary this way, but this has only
+  // been verified against the one Axis Bank sample — a bank using very different headers may need
+  // this adjusted.
+  function findStatementColumn(cells, patterns) {
+    for (let i = 0; i < cells.length; i++) {
+      const h = String(cells[i]).trim().toLowerCase();
+      if (patterns.some((p) => p.test(h))) return i;
+    }
+    return -1;
+  }
+
+  function parseBankStatementGrid(grid, accountName) {
+    let headerIdx = -1, dateCol = -1, particularsCol = -1, drCol = -1, crCol = -1;
+    for (let i = 0; i < grid.length; i++) {
+      const cells = grid[i] || [];
+      const d = findStatementColumn(cells, [/date/]);
+      const p = findStatementColumn(cells, [/particulars|narration|description/]);
+      const dr = findStatementColumn(cells, [/^dr$/, /debit/]);
+      const cr = findStatementColumn(cells, [/^cr$/, /credit/]);
+      if (d !== -1 && p !== -1 && dr !== -1 && cr !== -1) {
+        headerIdx = i; dateCol = d; particularsCol = p; drCol = dr; crCol = cr;
+        break;
+      }
+    }
+    if (headerIdx === -1) return [];
+
+    // DD-MM-YYYY (dashes) — distinct from the app's own template, which uses DD/MM/YYYY. Any
+    // line that doesn't start with a date in this column is skipped rather than erroring out,
+    // which is what naturally filters out the preamble, blank lines, and the legal/legend text.
+    const dateRe = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
+    const rows = [];
+    for (let i = headerIdx + 1; i < grid.length; i++) {
+      const cells = grid[i];
+      if (!cells || cells.length <= Math.max(dateCol, particularsCol, drCol, crCol)) continue;
+      const m = dateRe.exec(String(cells[dateCol]).trim());
+      if (!m) continue;
+      rows.push({
+        Date: m[1].padStart(2, "0") + "/" + m[2].padStart(2, "0") + "/" + m[3],
+        Items: String(cells[particularsCol]).replace(/\s+/g, " ").trim(),
+        Income: String(cells[crCol] || ""),
+        Expense: String(cells[drCol] || ""),
+        Account: accountName,
+        Category: ""
+      });
+    }
+    return rows;
+  }
+
+  function handleStatementImportFile(file, accountName) {
+    const reader = new FileReader();
+    const isCsv = /\.csv$/i.test(file.name);
+    reader.onload = (e) => {
+      try {
+        const workbook = isCsv ? XLSX.read(e.target.result, { type: "string", raw: true }) : XLSX.read(e.target.result, { type: "array", raw: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+        const rows = parseBankStatementGrid(grid, accountName);
+        if (rows.length === 0) {
+          toast("Couldn't find a transaction table in this file — expected columns like Date, Particulars, Debit, and Credit.");
+          return;
+        }
+        const preExistingCategoryIds = new Set(tracker().categories.map((c) => c.id));
+        // Every row defaults to "Uncategorized" (parseRows()'s own fallback, since Category is
+        // always blank here) — the review screen is where the user actually assigns categories.
+        const parsed = parseRows(rows);
+        const newCategoryIds = new Set(parsed.categories.filter((c) => !preExistingCategoryIds.has(c.id)).map((c) => c.id));
+        openImportPreview(parsed, newCategoryIds);
+      } catch (err) {
+        toast("Import failed: " + err.message);
+      }
+    };
+    if (isCsv) reader.readAsText(file);
+    else reader.readAsArrayBuffer(file);
+  }
+
   function handleImportFile(file) {
     const reader = new FileReader();
     const isCsv = /\.csv$/i.test(file.name);
@@ -993,6 +1076,40 @@
     document.getElementById("fileInput").addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (file) handleImportFile(file);
+      e.target.value = "";
+    });
+
+    document.getElementById("btnImportStatement").addEventListener("click", () => {
+      const sel = document.getElementById("statementAccountSelect");
+      sel.innerHTML = acctOptions(tracker().accounts[0] && tracker().accounts[0].id) + '<option value="__new__">+ New Account…</option>';
+      document.getElementById("statementNewAccountName").style.display = "none";
+      document.getElementById("statementNewAccountName").value = "";
+      document.getElementById("statementAccountBackdrop").classList.add("show");
+    });
+    document.getElementById("statementAccountSelect").addEventListener("change", (e) => {
+      document.getElementById("statementNewAccountName").style.display = e.target.value === "__new__" ? "" : "none";
+    });
+    document.getElementById("statementAccountCancel").addEventListener("click", () => {
+      document.getElementById("statementAccountBackdrop").classList.remove("show");
+    });
+    document.getElementById("statementAccountContinue").addEventListener("click", () => {
+      const sel = document.getElementById("statementAccountSelect");
+      let accountName;
+      if (sel.value === "__new__") {
+        accountName = document.getElementById("statementNewAccountName").value.trim();
+        if (!accountName) { toast("Enter a name for the new account."); return; }
+      } else {
+        const acct = findAccount(sel.value);
+        if (!acct) return;
+        accountName = acct.name;
+      }
+      pendingStatementAccountName = accountName;
+      document.getElementById("statementAccountBackdrop").classList.remove("show");
+      document.getElementById("statementFileInput").click();
+    });
+    document.getElementById("statementFileInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file && pendingStatementAccountName) handleStatementImportFile(file, pendingStatementAccountName);
       e.target.value = "";
     });
     document.getElementById("importPreviewBody").addEventListener("change", (e) => {
