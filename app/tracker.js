@@ -62,7 +62,7 @@
   }
 
   function seedTracker() {
-    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {}, chartExclusions: { topLevel: [], category: [] } };
+    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {}, chartExclusions: { topLevel: [], category: [], totalExpenses: [] } };
   }
 
   function isValidTracker(t) {
@@ -135,10 +135,11 @@
       // treated as corrupt and reseeded, discarding real data, if it were added to that check).
       const ce = parsed.dailyTracker.chartExclusions;
       if (!ce || typeof ce !== "object" || Array.isArray(ce)) {
-        parsed.dailyTracker.chartExclusions = { topLevel: [], category: [] };
+        parsed.dailyTracker.chartExclusions = { topLevel: [], category: [], totalExpenses: [] };
       } else {
         if (!Array.isArray(ce.topLevel)) ce.topLevel = [];
         if (!Array.isArray(ce.category)) ce.category = [];
+        if (!Array.isArray(ce.totalExpenses)) ce.totalExpenses = [];
       }
       return parsed;
     } catch (e) {
@@ -286,6 +287,7 @@
     const spendByTopLevel = {};
     const spendBySub = {};
     const incomeBySub = {};
+    const excludedFromTotal = tracker().chartExclusions.totalExpenses;
     monthTxns.forEach((t) => {
       const cat = findCategory(t.categoryId);
       if (!cat) return;
@@ -293,7 +295,10 @@
         totalIncome += t.amount;
         incomeBySub[cat.id] = (incomeBySub[cat.id] || 0) + t.amount; // always a plain, non-negative sum
       } else {
-        totalExpense += t.amount;
+        // Categories excluded here (via the Total Expenses customize icon) only affect this one
+        // stat — spendByTopLevel/spendBySub still include everything, so Budget vs Actual and
+        // both charts (which have their own, separate exclusion lists) are unaffected.
+        if (!excludedFromTotal.includes(cat.id)) totalExpense += t.amount;
         const top = topLevelOf(cat);
         if (top) spendByTopLevel[top.id] = (spendByTopLevel[top.id] || 0) + t.amount;
         spendBySub[cat.id] = (spendBySub[cat.id] || 0) + t.amount;
@@ -358,8 +363,11 @@
     document.getElementById("donutMonthLabel2").textContent = label;
   }
 
-  function card(label, value, hintHtml) {
-    return '<div class="stat-card"><div class="label">' + label + '</div><div class="value">' + value + "</div>" + (hintHtml || "") + "</div>";
+  function card(label, value, hintHtml, actionBtnHtml) {
+    const labelRow = actionBtnHtml
+      ? '<div class="stat-card-head"><div class="label">' + label + "</div>" + actionBtnHtml + "</div>"
+      : '<div class="label">' + label + "</div>";
+    return '<div class="stat-card">' + labelRow + '<div class="value">' + value + "</div>" + (hintHtml || "") + "</div>";
   }
 
   function renderAccounts(d) {
@@ -409,9 +417,10 @@
   }
 
   function renderStats(d) {
+    const customizeExpensesBtn = '<button class="icon-btn" data-action="open-chart-customize" data-target="totalExpenses" title="Choose which categories count toward Total Expenses">⚙</button>';
     document.getElementById("statCards").innerHTML = [
       card("Total Income", fmtINR(d.totalIncome), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>"),
-      card("Total Expenses", fmtINR(d.totalExpense), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>"),
+      card("Total Expenses", fmtINR(d.totalExpense), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeExpensesBtn),
       card("Net", fmtINR(d.net), '<span class="hint ' + (d.net >= 0 ? "ok" : "warn") + '">' + (d.net >= 0 ? "Positive" : "Negative") + "</span>"),
       card("Transactions", String(d.txnCount), '<span class="hint">this month</span>')
     ].join("");
@@ -494,11 +503,22 @@
     return '<label class="chart-customize-row"><input type="checkbox" data-chart-cat-id="' + c.id + '"' + (checked ? " checked" : "") + ">" + escapeHtml(c.name) + "</label>";
   }
 
+  const CHART_CUSTOMIZE_TITLES = {
+    topLevel: "By Top-Level Category chart",
+    category: "By Category chart",
+    totalExpenses: "Total Expenses calculation"
+  };
+  const CHART_CUSTOMIZE_DESCS = {
+    topLevel: "Uncheck a category to hide it from this chart only — nothing else about it changes.",
+    category: "Uncheck a category to hide it from this chart only — nothing else about it changes.",
+    totalExpenses: "Uncheck a category to leave its spending out of the Total Expenses stat card. This only affects that one number — the category itself, its budget, and both charts are unaffected."
+  };
+
   function renderChartCustomizeModal() {
     const target = chartCustomizeTarget;
     const excludedIds = tracker().chartExclusions[target];
-    document.getElementById("chartCustomizeTitle").textContent = target === "topLevel" ? "By Top-Level Category chart" : "By Category chart";
-    document.getElementById("chartCustomizeDesc").textContent = "Uncheck a category to hide it from this chart only — nothing else about it changes.";
+    document.getElementById("chartCustomizeTitle").textContent = CHART_CUSTOMIZE_TITLES[target] || "";
+    document.getElementById("chartCustomizeDesc").textContent = CHART_CUSTOMIZE_DESCS[target] || "";
 
     let html;
     if (target === "topLevel") {
@@ -1041,7 +1061,7 @@
       return "<tr>" +
         '<td><input type="checkbox" class="import-include" checked></td>' +
         '<td class="left">' + t.date + "</td>" +
-        '<td class="left">' + escapeHtml(t.item) + "</td>" +
+        '<td class="left"><input class="cell-input name-input import-item" style="width:100%;" value="' + escapeAttr(t.item) + '"></td>' +
         '<td class="left"><select class="cell-input import-category" style="width:170px;">' + categorySelectOptions(t.categoryId, parsed.categories, newCategoryIds) + "</select></td>" +
         '<td class="left">' + escapeHtml(acct ? acct.name : "") + "</td>" +
         "<td>" + (t.direction === "in" ? "In" : "Out") + "</td>" +
@@ -1129,6 +1149,7 @@
         if (!row.querySelector(".import-include").checked) return;
         const t = pendingImport.transactions[i];
         t.categoryId = row.querySelector(".import-category").value;
+        t.item = row.querySelector(".import-item").value.trim();
         finalTxns.push(t);
       });
       if (finalTxns.length === 0) { toast("No transactions selected."); return; }
@@ -1197,12 +1218,15 @@
       renderOverview();
     });
 
-    document.querySelectorAll("[data-target].icon-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        chartCustomizeTarget = btn.dataset.target;
-        renderChartCustomizeModal();
-        document.getElementById("chartCustomizeBackdrop").classList.add("show");
-      });
+    // Delegated (not attached per-button) since the Total Expenses stat card — and its customize
+    // icon along with it — is rebuilt from scratch by renderStats() on every renderAll(), unlike
+    // the two chart cards' buttons which are static HTML and would work with a direct listener.
+    document.body.addEventListener("click", (e) => {
+      const btn = e.target.closest('[data-action="open-chart-customize"]');
+      if (!btn) return;
+      chartCustomizeTarget = btn.dataset.target;
+      renderChartCustomizeModal();
+      document.getElementById("chartCustomizeBackdrop").classList.add("show");
     });
     document.getElementById("chartCustomizeClose").addEventListener("click", () => {
       document.getElementById("chartCustomizeBackdrop").classList.remove("show");
@@ -1211,7 +1235,7 @@
       tracker().chartExclusions[chartCustomizeTarget] = [];
       persist();
       renderChartCustomizeModal();
-      renderCharts(computeDerivedTracker());
+      renderAll();
     });
     document.getElementById("chartCustomizeClearAll").addEventListener("click", () => {
       const target = chartCustomizeTarget;
@@ -1221,7 +1245,7 @@
       tracker().chartExclusions[target] = ids;
       persist();
       renderChartCustomizeModal();
-      renderCharts(computeDerivedTracker());
+      renderAll();
     });
     document.getElementById("chartCustomizeList").addEventListener("change", (e) => {
       const t = e.target;
@@ -1232,7 +1256,7 @@
       if (t.checked && idx !== -1) arr.splice(idx, 1);
       else if (!t.checked && idx === -1) arr.push(id);
       persist();
-      renderCharts(computeDerivedTracker());
+      renderAll();
     });
 
     document.getElementById("txnSearch").addEventListener("input", (e) => {
@@ -1249,18 +1273,27 @@
     });
     document.getElementById("btnClearMonth").addEventListener("click", async () => {
       const monthTxns = tracker().transactions.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
-      if (monthTxns.length === 0) { toast("No transactions in " + fmtMonthLabel(selectedMonth) + " to clear."); return; }
+      // Transfers are cleared alongside transactions — both move money and both show up in an
+      // account's all-time balance, so leaving a transfer behind after "clearing the month" would
+      // still show as a leftover amount in Accounts, which defeats the point of a clean slate.
+      const monthTransfers = tracker().transfers.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
+      if (monthTxns.length === 0 && monthTransfers.length === 0) { toast("No transactions in " + fmtMonthLabel(selectedMonth) + " to clear."); return; }
+      const parts = [];
+      if (monthTxns.length > 0) parts.push(monthTxns.length + " transaction(s)");
+      if (monthTransfers.length > 0) parts.push(monthTransfers.length + " transfer(s)");
       const ok = await confirmDialog(
         "Clear all transactions for " + fmtMonthLabel(selectedMonth) + "?",
-        "This permanently deletes " + monthTxns.length + " transaction(s) from this month. Other months, transfers, accounts, and budgets are not affected.",
+        "This permanently deletes " + parts.join(" and ") + " from this month, so every account's balance updates accordingly. Other months, accounts, and budgets are not affected.",
         "Delete All", "Cancel", true
       );
       if (!ok) return;
-      const idsToRemove = new Set(monthTxns.map((t) => t.id));
-      tracker().transactions = tracker().transactions.filter((t) => !idsToRemove.has(t.id));
+      const txnIdsToRemove = new Set(monthTxns.map((t) => t.id));
+      const transferIdsToRemove = new Set(monthTransfers.map((t) => t.id));
+      tracker().transactions = tracker().transactions.filter((t) => !txnIdsToRemove.has(t.id));
+      tracker().transfers = tracker().transfers.filter((t) => !transferIdsToRemove.has(t.id));
       persist();
       renderAll();
-      toast(monthTxns.length + " transaction(s) cleared.");
+      toast(parts.join(" and ") + " cleared.");
     });
 
     // Enter commits an edit the same way clicking away does — blur() triggers the existing

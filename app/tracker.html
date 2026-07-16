@@ -41,6 +41,8 @@
   .chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
   .chart-card-head h3{margin:0;}
   .chart-card-head .icon-btn{font-size:15px;flex-shrink:0;}
+  .stat-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .stat-card-head .icon-btn{font-size:14px;flex-shrink:0;padding:2px 4px;}
   .chart-customize-actions{display:flex;gap:8px;margin:2px 0 10px;}
   .chart-customize-group{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;}
   .chart-customize-group:first-child{margin-top:0;}
@@ -95,14 +97,14 @@
     <div class="chart-card">
       <div class="chart-card-head">
         <h3>By Top-Level Category — <span id="donutMonthLabel"></span></h3>
-        <button class="icon-btn" id="btnCustomizeTopLevel" data-target="topLevel" title="Choose categories shown in this chart">⚙</button>
+        <button class="icon-btn" data-action="open-chart-customize" data-target="topLevel" title="Choose categories shown in this chart">⚙</button>
       </div>
       <div class="canvas-box"><canvas id="chartTopLevel"></canvas></div>
     </div>
     <div class="chart-card">
       <div class="chart-card-head">
         <h3>By Category — <span id="donutMonthLabel2"></span></h3>
-        <button class="icon-btn" id="btnCustomizeCategory" data-target="category" title="Choose categories shown in this chart">⚙</button>
+        <button class="icon-btn" data-action="open-chart-customize" data-target="category" title="Choose categories shown in this chart">⚙</button>
       </div>
       <div class="canvas-box"><canvas id="chartCategory"></canvas></div>
     </div>
@@ -155,7 +157,7 @@
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
-        <button class="btn danger" id="btnClearMonth" title="Delete every transaction in the currently viewed month">Clear Month</button>
+        <button class="btn danger" id="btnClearMonth" title="Delete every transaction and transfer in the currently viewed month">Clear Month</button>
       </div>
     </div>
     <div class="table-scroll">
