@@ -61,8 +61,22 @@
     ];
   }
 
+  // Total Savings starts scoped to just the "Savings" top-level group's categories (falling back
+  // to nothing excluded if there's no such group, e.g. a heavily-renamed category set) — an empty
+  // default here would make it show the exact same number as Total Expenses out of the box, since
+  // both would otherwise sum every "Out" transaction with nothing to tell them apart.
+  function defaultSavingsExclusions(categories) {
+    const savingsGroup = categories.find((c) => !c.parentId && c.name.trim().toLowerCase() === "savings");
+    if (!savingsGroup) return [];
+    return categories.filter((c) => c.parentId !== savingsGroup.id).map((c) => c.id);
+  }
+
   function seedTracker() {
-    return { accounts: defaultAccounts(), categories: defaultCategories(), transactions: [], transfers: [], budgets: {}, chartExclusions: { topLevel: [], category: [], totalExpenses: [] } };
+    const categories = defaultCategories();
+    return {
+      accounts: defaultAccounts(), categories, transactions: [], transfers: [], budgets: {},
+      chartExclusions: { topLevel: [], category: [], totalIncome: [], totalExpenses: [], totalSavings: defaultSavingsExclusions(categories) }
+    };
   }
 
   function isValidTracker(t) {
@@ -135,11 +149,16 @@
       // treated as corrupt and reseeded, discarding real data, if it were added to that check).
       const ce = parsed.dailyTracker.chartExclusions;
       if (!ce || typeof ce !== "object" || Array.isArray(ce)) {
-        parsed.dailyTracker.chartExclusions = { topLevel: [], category: [], totalExpenses: [] };
+        parsed.dailyTracker.chartExclusions = {
+          topLevel: [], category: [], totalIncome: [], totalExpenses: [],
+          totalSavings: defaultSavingsExclusions(parsed.dailyTracker.categories)
+        };
       } else {
         if (!Array.isArray(ce.topLevel)) ce.topLevel = [];
         if (!Array.isArray(ce.category)) ce.category = [];
+        if (!Array.isArray(ce.totalIncome)) ce.totalIncome = [];
         if (!Array.isArray(ce.totalExpenses)) ce.totalExpenses = [];
+        if (!Array.isArray(ce.totalSavings)) ce.totalSavings = defaultSavingsExclusions(parsed.dailyTracker.categories);
       }
       return parsed;
     } catch (e) {
@@ -284,21 +303,24 @@
     const monthTransfers = tracker().transfers.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
     let totalIncome = 0;
     let totalExpense = 0;
+    let totalSavings = 0;
     const spendByTopLevel = {};
     const spendBySub = {};
     const incomeBySub = {};
-    const excludedFromTotal = tracker().chartExclusions.totalExpenses;
+    // Each of the three "Total ___" stat cards has its own independent exclusion list (via that
+    // card's ⚙ customize icon) — spendByTopLevel/spendBySub always include everything regardless,
+    // so Budget vs Actual and both charts (which have their own, separate exclusion lists) are
+    // never affected by these.
+    const excl = tracker().chartExclusions;
     monthTxns.forEach((t) => {
       const cat = findCategory(t.categoryId);
       if (!cat) return;
       if (t.direction === "in") {
-        totalIncome += t.amount;
+        if (!excl.totalIncome.includes(cat.id)) totalIncome += t.amount;
         incomeBySub[cat.id] = (incomeBySub[cat.id] || 0) + t.amount; // always a plain, non-negative sum
       } else {
-        // Categories excluded here (via the Total Expenses customize icon) only affect this one
-        // stat — spendByTopLevel/spendBySub still include everything, so Budget vs Actual and
-        // both charts (which have their own, separate exclusion lists) are unaffected.
-        if (!excludedFromTotal.includes(cat.id)) totalExpense += t.amount;
+        if (!excl.totalExpenses.includes(cat.id)) totalExpense += t.amount;
+        if (!excl.totalSavings.includes(cat.id)) totalSavings += t.amount;
         const top = topLevelOf(cat);
         if (top) spendByTopLevel[top.id] = (spendByTopLevel[top.id] || 0) + t.amount;
         spendBySub[cat.id] = (spendBySub[cat.id] || 0) + t.amount;
@@ -335,7 +357,7 @@
       });
     budgetGroups.forEach((g) => g.rows.sort((a, b) => b.actual - a.actual));
     return {
-      monthTxns, monthTransfers, totalIncome, totalExpense, net: totalIncome - totalExpense,
+      monthTxns, monthTransfers, totalIncome, totalExpense, totalSavings,
       txnCount: monthTxns.length, spendByTopLevel, spendBySub, incomeBySub, budgetGroups, balances: computeAccountBalances()
     };
   }
@@ -416,12 +438,15 @@
     document.getElementById("transferBody").innerHTML = rows;
   }
 
+  function customizeStatBtn(target, label) {
+    return '<button class="icon-btn" data-action="open-chart-customize" data-target="' + target + '" title="Choose which categories count toward ' + label + '">⚙</button>';
+  }
+
   function renderStats(d) {
-    const customizeExpensesBtn = '<button class="icon-btn" data-action="open-chart-customize" data-target="totalExpenses" title="Choose which categories count toward Total Expenses">⚙</button>';
     document.getElementById("statCards").innerHTML = [
-      card("Total Income", fmtINR(d.totalIncome), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>"),
-      card("Total Expenses", fmtINR(d.totalExpense), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeExpensesBtn),
-      card("Net", fmtINR(d.net), '<span class="hint ' + (d.net >= 0 ? "ok" : "warn") + '">' + (d.net >= 0 ? "Positive" : "Negative") + "</span>"),
+      card("Total Income", fmtINR(d.totalIncome), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalIncome", "Total Income")),
+      card("Total Expenses", fmtINR(d.totalExpense), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalExpenses", "Total Expenses")),
+      card("Total Savings", fmtINR(d.totalSavings), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalSavings", "Total Savings")),
       card("Transactions", String(d.txnCount), '<span class="hint">this month</span>')
     ].join("");
   }
@@ -506,12 +531,16 @@
   const CHART_CUSTOMIZE_TITLES = {
     topLevel: "By Top-Level Category chart",
     category: "By Category chart",
-    totalExpenses: "Total Expenses calculation"
+    totalIncome: "Total Income calculation",
+    totalExpenses: "Total Expenses calculation",
+    totalSavings: "Total Savings calculation"
   };
   const CHART_CUSTOMIZE_DESCS = {
     topLevel: "Uncheck a category to hide it from this chart only — nothing else about it changes.",
     category: "Uncheck a category to hide it from this chart only — nothing else about it changes.",
-    totalExpenses: "Uncheck a category to leave its spending out of the Total Expenses stat card. This only affects that one number — the category itself, its budget, and both charts are unaffected."
+    totalIncome: "Uncheck a category to leave its \"In\" activity out of the Total Income stat card. This only affects that one number.",
+    totalExpenses: "Uncheck a category to leave its spending out of the Total Expenses stat card. This only affects that one number — the category itself, its budget, and both charts are unaffected.",
+    totalSavings: "Uncheck a category to leave its spending out of the Total Savings stat card. Defaults to just the \"Savings\" group's categories, so it doesn't double-count with Total Expenses — check others in if you want them counted as savings too."
   };
 
   function renderChartCustomizeModal() {
