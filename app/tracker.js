@@ -158,6 +158,7 @@
   let overviewYear = null;
   let overviewMonth = null; // "01".."12" — only used in "week" mode
   let chartCustomizeTarget = null; // "topLevel" | "category" — which donut chart the modal is editing
+  let pendingImport = null; // { categories, accounts, transactions, newCategoryIds } — awaiting review in the import preview modal
 
   let storageWarned = false;
   function persist() {
@@ -663,14 +664,19 @@
 
   // Grouped by top-level category via <optgroup>, so the hierarchy is visible without extra UI.
   // A top-level category with no children of its own is included as a directly-selectable option.
-  function categorySelectOptions(selectedId) {
-    return tracker().categories.filter((c) => !c.parentId).map((top) => {
-      const subs = tracker().categories.filter((c) => c.parentId === top.id && (!c.archived || c.id === selectedId));
+  // `categories`/`newIds` let the import preview build options against its own merged
+  // existing+not-yet-created list instead of the live tracker — every other caller just uses the
+  // defaults (the live tracker, nothing marked "new").
+  function categorySelectOptions(selectedId, categories, newIds) {
+    categories = categories || tracker().categories;
+    const isLeaf = (cat) => !categories.some((c) => c.parentId === cat.id);
+    return categories.filter((c) => !c.parentId).map((top) => {
+      const subs = categories.filter((c) => c.parentId === top.id && (!c.archived || c.id === selectedId));
       let opts = "";
-      if (isLeafCategory(top)) {
-        opts += '<option value="' + top.id + '"' + (top.id === selectedId ? " selected" : "") + ">" + escapeHtml(top.name) + " (general)</option>";
+      if (isLeaf(top)) {
+        opts += '<option value="' + top.id + '"' + (top.id === selectedId ? " selected" : "") + ">" + escapeHtml(top.name) + " (general)" + (newIds && newIds.has(top.id) ? " — new" : "") + "</option>";
       }
-      opts += subs.map((s) => '<option value="' + s.id + '"' + (s.id === selectedId ? " selected" : "") + ">" + escapeHtml(s.name) + "</option>").join("");
+      opts += subs.map((s) => '<option value="' + s.id + '"' + (s.id === selectedId ? " selected" : "") + ">" + escapeHtml(s.name) + (newIds && newIds.has(s.id) ? " — new" : "") + "</option>").join("");
       return opts ? '<optgroup label="' + escapeHtml(top.name) + '">' + opts + "</optgroup>" : "";
     }).join("");
   }
@@ -915,7 +921,7 @@
   function handleImportFile(file) {
     const reader = new FileReader();
     const isCsv = /\.csv$/i.test(file.name);
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         // raw: true stops SheetJS from auto-detecting DD/MM/YYYY-style dates as US MM/DD/YYYY
         // and silently misreading them (e.g. "01/07/2026" — 1 July — becoming 7 January).
@@ -923,31 +929,60 @@
         const workbook = isCsv ? XLSX.read(e.target.result, { type: "string", raw: true }) : XLSX.read(e.target.result, { type: "array", raw: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        // Snapshot which category ids existed before this import, so the preview below can tell
+        // apart "genuinely new" categories (candidates for pruning if left unused) from ones the
+        // user already had (always kept, even if this particular import ends up not using them).
+        const preExistingCategoryIds = new Set(tracker().categories.map((c) => c.id));
         const parsed = parseRows(rows);
         if (parsed.transactions.length === 0) {
           toast("No recognizable rows found. Check the template format.");
           return;
         }
-        // Unlike the Portfolio page's import (a point-in-time snapshot, replaced wholesale), the
-        // tracker is an ongoing log — importing a month's data should add to history, not erase it.
-        const ok = await confirmDialog(
-          "Import transactions?",
-          "This adds " + parsed.transactions.length + " transaction(s) from \"" + file.name + "\" to your existing log (any new categories/accounts are created automatically). Existing transactions are not removed.",
-          "Import", "Cancel", false
-        );
-        if (!ok) return;
-        tracker().categories = parsed.categories;
-        tracker().accounts = parsed.accounts;
-        tracker().transactions = tracker().transactions.concat(parsed.transactions);
-        persist();
-        renderAll();
-        toast(parsed.transactions.length + " transaction(s) imported.");
+        const newCategoryIds = new Set(parsed.categories.filter((c) => !preExistingCategoryIds.has(c.id)).map((c) => c.id));
+        openImportPreview(parsed, newCategoryIds);
       } catch (err) {
         toast("Import failed: " + err.message);
       }
     };
     if (isCsv) reader.readAsText(file);
     else reader.readAsArrayBuffer(file);
+  }
+
+  // Lets the user check the parsed rows and re-categorize any of them before anything is
+  // actually added — a raw bank statement rarely has a matching Category column, so most rows
+  // land on an auto-created guess (or "Uncategorized") that's worth a quick look first.
+  function openImportPreview(parsed, newCategoryIds) {
+    pendingImport = { categories: parsed.categories, accounts: parsed.accounts, transactions: parsed.transactions, newCategoryIds };
+    document.getElementById("importPreviewBody").innerHTML = parsed.transactions.map((t) => {
+      const acct = parsed.accounts.find((a) => a.id === t.accountId);
+      return "<tr>" +
+        '<td><input type="checkbox" class="import-include" checked></td>' +
+        '<td class="left">' + t.date + "</td>" +
+        '<td class="left">' + escapeHtml(t.item) + "</td>" +
+        '<td class="left"><select class="cell-input import-category" style="width:170px;">' + categorySelectOptions(t.categoryId, parsed.categories, newCategoryIds) + "</select></td>" +
+        '<td class="left">' + escapeHtml(acct ? acct.name : "") + "</td>" +
+        "<td>" + (t.direction === "in" ? "In" : "Out") + "</td>" +
+        '<td class="' + (t.direction === "in" ? "neg" : "pos") + '">' + fmtINR(t.amount) + "</td>" +
+        "</tr>";
+    }).join("");
+    updateImportPreviewSummary();
+    document.getElementById("importPreviewBackdrop").classList.add("show");
+  }
+
+  function updateImportPreviewSummary() {
+    const rows = Array.from(document.querySelectorAll("#importPreviewBody tr"));
+    const included = rows.filter((r) => r.querySelector(".import-include").checked).length;
+    const usedIds = new Set();
+    rows.forEach((r) => {
+      if (r.querySelector(".import-include").checked) usedIds.add(r.querySelector(".import-category").value);
+    });
+    const newUsedCount = Array.from(pendingImport.newCategoryIds).filter((id) => usedIds.has(id)).length;
+    document.getElementById("importPreviewSummary").textContent =
+      included + " of " + rows.length + " transaction" + (rows.length === 1 ? "" : "s") + " selected" +
+      (newUsedCount > 0 ? " — " + newUsedCount + " new categor" + (newUsedCount === 1 ? "y" : "ies") + " will be created" : "") + ".";
+    const confirmBtn = document.getElementById("importPreviewConfirm");
+    confirmBtn.textContent = "Import " + included + " Transaction" + (included === 1 ? "" : "s");
+    confirmBtn.disabled = included === 0;
   }
 
   // ---------- event wiring ----------
@@ -959,6 +994,39 @@
       const file = e.target.files[0];
       if (file) handleImportFile(file);
       e.target.value = "";
+    });
+    document.getElementById("importPreviewBody").addEventListener("change", (e) => {
+      if (e.target.classList.contains("import-include") || e.target.classList.contains("import-category")) {
+        updateImportPreviewSummary();
+      }
+    });
+    document.getElementById("importPreviewCancel").addEventListener("click", () => {
+      document.getElementById("importPreviewBackdrop").classList.remove("show");
+      pendingImport = null;
+    });
+    document.getElementById("importPreviewConfirm").addEventListener("click", () => {
+      if (!pendingImport) return;
+      const rows = Array.from(document.querySelectorAll("#importPreviewBody tr"));
+      const finalTxns = [];
+      rows.forEach((row, i) => {
+        if (!row.querySelector(".import-include").checked) return;
+        const t = pendingImport.transactions[i];
+        t.categoryId = row.querySelector(".import-category").value;
+        finalTxns.push(t);
+      });
+      if (finalTxns.length === 0) { toast("No transactions selected."); return; }
+      // Only newly-discovered categories are subject to pruning — a category the user already
+      // had is always kept, even if this particular import ends up not using it.
+      const usedCategoryIds = new Set(finalTxns.map((t) => t.categoryId));
+      const finalCategories = pendingImport.categories.filter((c) => !pendingImport.newCategoryIds.has(c.id) || usedCategoryIds.has(c.id));
+      tracker().categories = finalCategories;
+      tracker().accounts = pendingImport.accounts;
+      tracker().transactions = tracker().transactions.concat(finalTxns);
+      persist();
+      renderAll();
+      toast(finalTxns.length + " transaction(s) imported.");
+      document.getElementById("importPreviewBackdrop").classList.remove("show");
+      pendingImport = null;
     });
     document.getElementById("btnTemplate").addEventListener("click", () => {
       exportCSV(sampleTrackerTemplate(), "FinTrack_Tracker_Template.csv");

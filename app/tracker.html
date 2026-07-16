@@ -282,6 +282,33 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="importPreviewBackdrop">
+  <div class="modal scroll-modal" style="max-width:820px;">
+    <h3>Review import</h3>
+    <p id="importPreviewSummary"></p>
+    <div class="table-scroll">
+      <table id="importPreviewTable">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="left">Date</th>
+            <th class="left">Item</th>
+            <th class="left">Category</th>
+            <th class="left">Account</th>
+            <th>In/Out</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody id="importPreviewBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="importPreviewCancel">Cancel</button>
+      <button class="btn primary" id="importPreviewConfirm" style="color:#fff;">Import</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="lib/xlsx.full.min.js"></script>
