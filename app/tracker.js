@@ -1130,6 +1130,21 @@
       sortOrder = e.target.value;
       renderTransactions(computeDerivedTracker());
     });
+    document.getElementById("btnClearMonth").addEventListener("click", async () => {
+      const monthTxns = tracker().transactions.filter((t) => t.date && t.date.slice(0, 7) === selectedMonth);
+      if (monthTxns.length === 0) { toast("No transactions in " + fmtMonthLabel(selectedMonth) + " to clear."); return; }
+      const ok = await confirmDialog(
+        "Clear all transactions for " + fmtMonthLabel(selectedMonth) + "?",
+        "This permanently deletes " + monthTxns.length + " transaction(s) from this month. Other months, transfers, accounts, and budgets are not affected.",
+        "Delete All", "Cancel", true
+      );
+      if (!ok) return;
+      const idsToRemove = new Set(monthTxns.map((t) => t.id));
+      tracker().transactions = tracker().transactions.filter((t) => !idsToRemove.has(t.id));
+      persist();
+      renderAll();
+      toast(monthTxns.length + " transaction(s) cleared.");
+    });
 
     // Enter commits an edit the same way clicking away does — blur() triggers the existing
     // "change" handler below rather than duplicating its logic.
