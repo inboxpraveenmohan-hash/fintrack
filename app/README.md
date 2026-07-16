@@ -14,6 +14,7 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 ## Portfolio Manager
 
+- **Toolbar**: **Import ▾** (Import from CDSL, Import CSV/Excel, Download Template, Load Sample Portfolio) and **Export ▾** (Export CSV, Export Excel) keep the day-to-day and occasional actions out of the way in dropdowns; **Reset All Data** stays a standalone button since it's destructive and worth keeping one click away rather than tucked into a menu.
 - **Theme** (button in the header, top right): cycles Match system → Light → Dark. Follows your OS/browser preference by default; the manual choice is remembered on this device either way.
 - **Edit inline**: click any Target %, current value, or SIP % cell to edit. Totals, deviation, correction and net worth recalculate immediately.
 - **Add/remove** asset classes and holdings in Asset Allocation, or items/subsections in Other Assets, using the + rows and ✕ buttons.
@@ -25,11 +26,11 @@ Your data is saved automatically in the browser's local storage on the machine y
 - **Other Assets subsections**: most other-asset items (Chit, NPS, Safe Gold, …) are a single value, but an item can instead be a **subsection** — an expandable group of individual line items whose values sum to the section's total (e.g. "Bonds" holding several NCDs). Click "+ Add Subsection" to create one, then expand it and use "+ Add Item" inside.
 - **Expand All / Collapse All**: buttons in each section header expand or collapse every asset class (or Other Assets subsection) at once — individual rows still toggle on click as before.
 - **Move between sections** (⇄ button on each row): an Asset Allocation class can move to Other Assets (becomes a subsection with the same holdings; its Target % and per-holding SIP % are dropped, since Other Assets doesn't use those). An Other Assets subsection can move the other way to become a full Asset Allocation class (starts at 0% target — set it after moving); a simple Other Assets item (no sub-holdings, e.g. Chit) can too, becoming a new class with one holding matching its value.
-- **Import CSV/Excel**: use "Download Template" to get a starter file with the current column layout, fill it in Excel/Sheets, then "Import CSV / Excel" to load it (this replaces the current portfolio — export a backup first if unsure).
-- **Export**: "Export CSV" / "Export Excel" save your current portfolio as a backup or for editing outside the app.
-- **Load Sample Portfolio**: resets to the example data matching the original reference sheet.
+- **Import CSV/Excel** (in the **Import ▾** menu): use "Download Template" (same menu) to get a starter file with the current column layout, fill it in Excel/Sheets, then "Import CSV / Excel" to load it (this replaces the current portfolio — export a backup first if unsure).
+- **Export ▾**: "Export CSV" / "Export Excel" save your current portfolio as a backup or for editing outside the app.
+- **Load Sample Portfolio** (in the **Import ▾** menu): resets to the example data matching the original reference sheet.
 - **Reset All Data**: clears everything.
-- **Sync from CDSL Statement**: refreshes current values from a CDSL "Transaction cum Holding" statement (see below).
+- **Import from CDSL** (in the **Import ▾** menu): refreshes current values from a CDSL "Transaction cum Holding" statement (see below).
 
 ## Import/Export file format
 
@@ -45,7 +46,7 @@ A flat table with columns: `Section, Name, Parent, CurrentValue, TargetPct, SIPP
 
 CDSL's "Transaction cum Holding_Consolidated" statement (downloadable as CSV from the CDSL Easi/Easiest portal, covering CDSL + NSDL demat accounts and mutual fund folios) can be used to refresh your holdings' current values without an API, login, or credentials — it's a file you already have.
 
-Click **Sync from CDSL Statement** and pick the CSV. The app:
+Click **Import from CDSL** (in the **Import ▾** menu) and pick the CSV. The app:
 
 1. Parses every demat holdings section (CDSL + NSDL) and the mutual fund folio holdings section, skipping transaction ledgers and zero-value rows.
 2. Aggregates by ISIN (a security held across multiple accounts/folios is summed into one value).

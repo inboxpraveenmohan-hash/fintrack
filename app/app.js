@@ -1031,6 +1031,23 @@
       toast("Moved \"Bonds\" out of Asset Allocation into Other Assets — it no longer affects target %/deviation.");
     }
 
+    // Toolbar dropdown menus (Import / Export): toggle on the button, close on any other click —
+    // including a click on one of the menu's own items, so picking an action closes the menu
+    // too, since that click bubbles to this same document-level listener after the item's own
+    // handler has already run. Mirrors tracker.js's identical pattern for the Daily Tracker page.
+    document.querySelectorAll("[data-menu-toggle]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const menu = document.getElementById(btn.dataset.menuToggle);
+        const isOpen = menu.classList.contains("show");
+        document.querySelectorAll(".menu-dropdown.show").forEach((m) => m.classList.remove("show"));
+        if (!isOpen) menu.classList.add("show");
+      });
+    });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".menu-dropdown.show").forEach((m) => m.classList.remove("show"));
+    });
+
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
       const file = e.target.files[0];

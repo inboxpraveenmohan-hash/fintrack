@@ -58,14 +58,26 @@
   </header>
 
   <div class="toolbar">
-    <button class="btn primary" id="btnImport">Import CSV / Excel</button>
+    <div class="menu-wrap">
+      <button class="btn primary" data-menu-toggle="importMenu">Import ▾</button>
+      <div class="menu-dropdown" id="importMenu">
+        <button class="menu-item" id="btnCdsl">Import from CDSL</button>
+        <button class="menu-item" id="btnImport">Import CSV / Excel</button>
+        <button class="menu-item" id="btnTemplate">Download Template</button>
+        <button class="menu-item" id="btnSample">Load Sample Portfolio</button>
+      </div>
+    </div>
     <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
-    <button class="btn" id="btnTemplate">Download Template</button>
-    <button class="btn" id="btnExportCsv">Export CSV</button>
-    <button class="btn" id="btnExportXlsx">Export Excel</button>
-    <button class="btn primary" id="btnCdsl">Sync from CDSL Statement</button>
     <input type="file" id="cdslFileInput" accept=".csv,.txt">
-    <button class="btn" id="btnSample">Load Sample Portfolio</button>
+
+    <div class="menu-wrap">
+      <button class="btn" data-menu-toggle="exportMenu">Export ▾</button>
+      <div class="menu-dropdown" id="exportMenu">
+        <button class="menu-item" id="btnExportCsv">Export CSV</button>
+        <button class="menu-item" id="btnExportXlsx">Export Excel</button>
+      </div>
+    </div>
+
     <button class="btn danger" id="btnReset">Reset All Data</button>
   </div>
 
