@@ -1135,14 +1135,25 @@
   // Lets the user check the parsed rows and re-categorize any of them before anything is
   // actually added — a raw bank statement rarely has a matching Category column, so most rows
   // land on an auto-created guess (or "Uncategorized") that's worth a quick look first.
+  // Flags a parsed row as a likely duplicate if an EXISTING transaction (already saved, not
+  // another row in this same import) matches on date, account, amount, and direction — direction
+  // is included even though the user only asked for date/account/amount, since a same-day
+  // same-amount refund and purchase on the same account are clearly not duplicates of each other.
+  function isDuplicateTxn(t) {
+    return tracker().transactions.some((x) =>
+      x.date === t.date && x.accountId === t.accountId && x.amount === t.amount && x.direction === t.direction);
+  }
+
   function openImportPreview(parsed, newCategoryIds) {
     pendingImport = { categories: parsed.categories, accounts: parsed.accounts, transactions: parsed.transactions, newCategoryIds };
     document.getElementById("importPreviewBody").innerHTML = parsed.transactions.map((t) => {
       const acct = parsed.accounts.find((a) => a.id === t.accountId);
-      return "<tr>" +
+      const dup = isDuplicateTxn(t);
+      const dupBadge = dup ? ' <span class="dup-badge" title="An existing transaction already matches this date, account, and amount">Possible duplicate</span>' : "";
+      return '<tr class="' + (dup ? "import-dup-row" : "") + '">' +
         '<td><input type="checkbox" class="import-include" checked></td>' +
         '<td class="left">' + t.date + "</td>" +
-        '<td class="left"><input class="cell-input name-input import-item" style="width:100%;" value="' + escapeAttr(t.item) + '"></td>' +
+        '<td class="left"><input class="cell-input name-input import-item" style="width:100%;" value="' + escapeAttr(t.item) + '">' + dupBadge + "</td>" +
         '<td class="left"><select class="cell-input import-category" style="width:170px;">' + categorySelectOptions(t.categoryId, parsed.categories, newCategoryIds) + "</select></td>" +
         '<td class="left">' + escapeHtml(acct ? acct.name : "") + "</td>" +
         "<td>" + (t.direction === "in" ? "In" : "Out") + "</td>" +
@@ -1161,9 +1172,11 @@
       if (r.querySelector(".import-include").checked) usedIds.add(r.querySelector(".import-category").value);
     });
     const newUsedCount = Array.from(pendingImport.newCategoryIds).filter((id) => usedIds.has(id)).length;
+    const dupCount = rows.filter((r) => r.classList.contains("import-dup-row")).length;
     document.getElementById("importPreviewSummary").textContent =
       included + " of " + rows.length + " transaction" + (rows.length === 1 ? "" : "s") + " selected" +
-      (newUsedCount > 0 ? " — " + newUsedCount + " new categor" + (newUsedCount === 1 ? "y" : "ies") + " will be created" : "") + ".";
+      (newUsedCount > 0 ? " — " + newUsedCount + " new categor" + (newUsedCount === 1 ? "y" : "ies") + " will be created" : "") +
+      (dupCount > 0 ? " — " + dupCount + " possible duplicate" + (dupCount === 1 ? "" : "s") + " found, highlighted below" : "") + ".";
     const confirmBtn = document.getElementById("importPreviewConfirm");
     confirmBtn.textContent = "Import " + included + " Transaction" + (included === 1 ? "" : "s");
     confirmBtn.disabled = included === 0;
@@ -1519,6 +1532,15 @@
         const amount = parseFloat(document.getElementById("newTxnAmount").value) || 0;
         if (!item) { toast("Enter a description for the transaction."); return; }
         if (!amount) { toast("Enter an amount."); return; }
+        if (isDuplicateTxn({ date, accountId, amount, direction })) {
+          const acct = findAccount(accountId);
+          const ok = await confirmDialog(
+            "Possible duplicate transaction",
+            "An existing transaction already matches this date, account (" + (acct ? acct.name : "") + "), and amount. Add it anyway?",
+            "Add Anyway", "Cancel", false
+          );
+          if (!ok) return;
+        }
         tracker().transactions.push({ id: uid("txn"), date, item, amount, direction, categoryId, accountId });
         persist();
         renderAll();
