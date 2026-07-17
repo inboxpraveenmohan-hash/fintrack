@@ -189,6 +189,7 @@
   let overviewMode = "year"; // "week" | "month" | "year"
   let overviewYear = null;
   let overviewMonth = null; // "01".."12" — only used in "week" mode
+  let overviewCategoryId = ""; // "" = all top-level groups (default); a leaf category id drills into just that one
   let chartCustomizeTarget = null; // "topLevel" | "category" — which donut chart the modal is editing
   let pendingImport = null; // { categories, accounts, transactions, newCategoryIds } — awaiting review in the import preview modal
   let pendingStatementAccountName = null; // account chosen/typed in the statement-import account picker, before the file is chosen
@@ -596,11 +597,13 @@
     return years.length ? years : [String(new Date().getFullYear())];
   }
 
-  // Same net-out-minus-in convention as Budget vs Actual, but per top-level category and bucketed
-  // by week/month/year instead of per-leaf-category for a single month — "actual" is always a
-  // non-negative magnitude (a category dominated by "In", like Income, still just shows its size).
-  function computeOverviewData(mode, year, month) {
-    const topLevels = tracker().categories.filter((c) => !c.parentId);
+  // Same net-out-minus-in convention as Budget vs Actual, bucketed by week/month/year instead of
+  // per-leaf-category for a single month — "actual" is always a non-negative magnitude (a
+  // category dominated by "In", like Income, still just shows its size). Two shapes: with no
+  // categoryId, one series per top-level group (the original view); with a leaf categoryId, a
+  // single series scoped to just that category's own transactions, for drilling into one
+  // category's trend rather than comparing groups.
+  function computeOverviewData(mode, year, month, categoryId) {
     const txns = tracker().transactions;
 
     let buckets;
@@ -629,15 +632,23 @@
       return String(Math.floor((day - 1) / 7) + 1);
     }
 
-    const sums = topLevels.map((tl) => ({ topLevel: tl, out: new Array(buckets.length).fill(0), in: new Array(buckets.length).fill(0) }));
-    const sumByTop = {};
-    sums.forEach((s) => { sumByTop[s.topLevel.id] = s; });
+    let sums;
+    if (categoryId) {
+      const cat = findCategory(categoryId);
+      if (!cat) return { buckets, series: [] };
+      sums = [{ category: cat, out: new Array(buckets.length).fill(0), in: new Array(buckets.length).fill(0) }];
+    } else {
+      sums = tracker().categories.filter((c) => !c.parentId)
+        .map((tl) => ({ category: tl, out: new Array(buckets.length).fill(0), in: new Array(buckets.length).fill(0) }));
+    }
+    const sumById = {};
+    sums.forEach((s) => { sumById[s.category.id] = s; });
 
     txns.forEach((t) => {
       if (!inScope(t)) return;
       const cat = findCategory(t.categoryId);
       if (!cat) return;
-      const s = sumByTop[topLevelOf(cat).id];
+      const s = categoryId ? (t.categoryId === categoryId ? sumById[categoryId] : null) : sumById[topLevelOf(cat).id];
       if (!s) return;
       const idx = bucketIndex[bucketKeyOf(t)];
       if (idx === undefined) return;
@@ -645,7 +656,7 @@
     });
 
     const series = sums.map((s) => ({
-      topLevel: s.topLevel,
+      category: s.category,
       points: buckets.map((b, i) => {
         const net = s.out[i] - s.in[i];
         return { actual: Math.abs(net) };
@@ -669,32 +680,43 @@
     document.getElementById("overviewYear").style.display = overviewMode === "year" ? "none" : "";
     document.getElementById("overviewMonth").style.display = overviewMode === "week" ? "" : "none";
     document.querySelectorAll("#overviewModeGroup .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === overviewMode));
+    // "All Top-Level" (default) groups by Income/Expense/Savings like before; picking one specific
+    // category below drills into just that category's own trend instead of comparing groups.
+    document.getElementById("overviewCategory").innerHTML =
+      '<option value=""' + (overviewCategoryId ? "" : " selected") + '>All Top-Level</option>' + categorySelectOptions(overviewCategoryId);
   }
 
   function renderOverview() {
     populateOverviewPickers();
-    const data = computeOverviewData(overviewMode, overviewYear, overviewMonth);
-    const topLevelIds = tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
+    const data = computeOverviewData(overviewMode, overviewYear, overviewMonth, overviewCategoryId || null);
+
+    // Color lookup matches whichever chart this category is normally colored by: top-level ids
+    // (in top-level order) when comparing groups, leaf ids (in "By Category" chart order) when
+    // drilled into one specific category — so the color is never a coincidence, just consistent
+    // with where you'd already recognize that category from elsewhere in the app.
+    const idIndex = overviewCategoryId
+      ? tracker().categories.filter((c) => isLeafCategory(c) && !c.archived).map((c) => c.id)
+      : tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
 
     const cs = getComputedStyle(document.documentElement);
     const mutedColor = cs.getPropertyValue("--muted").trim();
     const gridColor = cs.getPropertyValue("--row-line").trim();
 
-    // Each top-level category keeps one consistent color everywhere it appears — chart bars,
-    // legend swatch, and the table cells below — rather than swapping per-bar, which made the
-    // legend (one fixed swatch per dataset) mismatch bars that had switched to a different color.
-    const colorByTopId = {};
+    // Each series keeps one consistent color everywhere it appears — chart bars, legend swatch,
+    // and the table cells below — rather than swapping per-bar, which made the legend (one fixed
+    // swatch per dataset) mismatch bars that had switched to a different color.
+    const colorById = {};
     data.series.forEach((s) => {
-      const idx = topLevelIds.indexOf(s.topLevel.id);
-      colorByTopId[s.topLevel.id] = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+      const idx = idIndex.indexOf(s.category.id);
+      colorById[s.category.id] = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
     });
 
     if (overviewChart) { overviewChart.destroy(); overviewChart = null; }
     if (data.buckets.length && data.series.length) {
       const datasets = data.series.map((s) => ({
-        label: s.topLevel.name,
+        label: s.category.name,
         data: s.points.map((p) => p.actual),
-        backgroundColor: colorByTopId[s.topLevel.id]
+        backgroundColor: colorById[s.category.id]
       }));
       const ctx = document.getElementById("overviewChart").getContext("2d");
       overviewChart = new Chart(ctx, {
@@ -720,12 +742,12 @@
       });
     }
 
-    const head = '<th class="left">Period</th>' + data.series.map((s) => "<th>" + escapeHtml(s.topLevel.name) + "</th>").join("");
+    const head = '<th class="left">Period</th>' + data.series.map((s) => "<th>" + escapeHtml(s.category.name) + "</th>").join("");
     document.getElementById("overviewTableHead").innerHTML = head;
     const bodyRows = data.buckets.map((b, i) => {
       const cells = data.series.map((s) => {
         const p = s.points[i];
-        const style = p.actual > 0 ? ' style="color:' + colorByTopId[s.topLevel.id] + '"' : "";
+        const style = p.actual > 0 ? ' style="color:' + colorById[s.category.id] + '"' : "";
         return "<td" + (p.actual > 0 ? style : ' class="neu"') + ">" + (p.actual > 0 ? fmtINR(p.actual) : "—") + "</td>";
       }).join("");
       return '<tr><td class="left">' + escapeHtml(b.label) + "</td>" + cells + "</tr>";
@@ -1291,6 +1313,10 @@
     });
     document.getElementById("overviewMonth").addEventListener("change", (e) => {
       overviewMonth = e.target.value;
+      renderOverview();
+    });
+    document.getElementById("overviewCategory").addEventListener("change", (e) => {
+      overviewCategoryId = e.target.value;
       renderOverview();
     });
 
