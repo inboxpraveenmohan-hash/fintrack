@@ -1,4 +1,4 @@
-/* FinTrack — Daily Tracker & Monthly Budgeting
+/* FinTrack — Ledger (transactions, accounts, categories, and monthly budgets)
    Second page of FinTrack. Shares the same localStorage blob and Google Drive sync mechanism
    as the Portfolio page (app.js), under a new top-level state.dailyTracker key — see the
    persist() contract note below, which must stay behaviorally identical to app.js's persist()

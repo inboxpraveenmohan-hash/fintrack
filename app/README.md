@@ -1,12 +1,12 @@
 # FinTrack — Personal Finance
 
-A portable, offline personal-finance app with two pages: a **Portfolio Manager** (asset allocation vs. target, deviation/correction, monthly SIP splits, net worth) and a **Daily Tracker** (day-to-day income/expenses, account balances, monthly budgets). Switch between them with the tabs in the header.
+A portable, offline personal-finance app with two pages: a **Portfolio Manager** (asset allocation vs. target, deviation/correction, monthly SIP splits, net worth) and a **Ledger** (day-to-day transactions, month-scoped account balances, budgets vs actual, category trends over time, and direct bank statement import). Switch between them with the tabs in the header.
 
 Live demo (illustrative sample data, not real numbers): **https://inboxpraveenmohan-hash.github.io/fintrack/**
 
 ## Running it
 
-Double-click `index.html` (Portfolio) or `tracker.html` (Daily Tracker) to open either in any modern browser (Chrome, Edge, Firefox) — the tabs in the header link between them. No install, no server, no internet connection needed after you have the files — everything (including the Excel/CSV library and charting library) is bundled in the `lib/` folder.
+Double-click `index.html` (Portfolio) or `tracker.html` (Ledger) to open either in any modern browser (Chrome, Edge, Firefox) — the tabs in the header link between them. No install, no server, no internet connection needed after you have the files — everything (including the Excel/CSV library and charting library) is bundled in the `lib/` folder.
 
 To carry it around, copy the whole `app/` folder — all of `index.html`, `tracker.html`, `app.js`, `tracker.js`, `shared.css`, `theme.js`, and `lib/` need to stay together — e.g. onto a USB drive or a shared folder.
 
@@ -56,9 +56,9 @@ Click **Import from CDSL** (in the **Import ▾** menu) and pick the CSV. The ap
 
 Name matching is heuristic — always check the review screen before applying, especially the first time before ISINs are recorded.
 
-## Daily Tracker
+## Ledger
 
-The second tab — day-to-day income/expenses, account balances, and monthly budgets. Its data is completely separate from the Portfolio page (no automatic links between them); it lives alongside the portfolio data in the same local storage and syncs through the same Cloud Sync mechanism below.
+The second tab — a day-to-day money ledger: transactions, accounts, categories, budgets vs actual, and trend overviews across your whole history, plus direct import from a bank statement. Its data is completely separate from the Portfolio page (no automatic links between them); it lives alongside the portfolio data in the same local storage and syncs through the same Cloud Sync mechanism below.
 
 - **Toolbar**: three dropdown buttons keep the day-to-day controls from crowding out the month switcher — **Import ▾** (Import CSV/Excel, Import Bank Statement, Download Template), **Export ▾** (Export CSV, Export Excel), and **Manage ▾** (Categories, Transfers). The **Overview** button stands apart in its own bright accent color, since it's the one toolbar action that opens a full report rather than a quick edit or a modal.
 - **Accounts**: track SALARY/SAVINGS/CASH/CC-style accounts (fully editable — rename, add, or delete), no separate account type to set. Balances are scoped **per month**, like a real monthly statement: **Opening Balance** for the month you're viewing, plus that month's own transactions and transfers, gives that month's **Closing Balance** — switching months shows each month's own independent figures, not a running all-time total. A month with no opening balance of its own falls back to the account's original starting balance. Edit a month's Opening Balance directly (only that month is affected), or use **Copy Previous Month's Balances** (in the Accounts header) to set every account's opening balance for the month you're viewing to its closing balance from the month before, after a confirmation — handy at the start of a new month rather than typing each one in by hand. A credit card account simply goes negative as you spend on it (that negative number *is* what you owe) and comes back toward zero as you pay it down via a transfer.
@@ -77,7 +77,7 @@ The second tab — day-to-day income/expenses, account balances, and monthly bud
 
 ## Cloud sync (Google Drive) and Android access
 
-The app can optionally sync your data — Portfolio and Daily Tracker together, as one file — to your own Google Drive, letting you use it from any browser, including on your Android phone via Chrome, with edits syncing automatically between devices. This is entirely opt-in: signed out (or opened as a local file), the app works exactly as described above, fully offline, with no account needed.
+The app can optionally sync your data — Portfolio and Ledger together, as one file — to your own Google Drive, letting you use it from any browser, including on your Android phone via Chrome, with edits syncing automatically between devices. This is entirely opt-in: signed out (or opened as a local file), the app works exactly as described above, fully offline, with no account needed.
 
 **One-time setup**: see [`CLOUD_SYNC_SETUP.md`](CLOUD_SYNC_SETUP.md) — you'll host the app on GitHub Pages and create a free Google OAuth Client ID (both need your own accounts).
 

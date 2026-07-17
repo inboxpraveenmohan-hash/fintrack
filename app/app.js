@@ -1034,7 +1034,7 @@
     // Toolbar dropdown menus (Import / Export): toggle on the button, close on any other click —
     // including a click on one of the menu's own items, so picking an action closes the menu
     // too, since that click bubbles to this same document-level listener after the item's own
-    // handler has already run. Mirrors tracker.js's identical pattern for the Daily Tracker page.
+    // handler has already run. Mirrors tracker.js's identical pattern for the Ledger page.
     document.querySelectorAll("[data-menu-toggle]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
