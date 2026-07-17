@@ -410,6 +410,7 @@
     document.getElementById("donutMonthLabel").textContent = label;
     document.getElementById("donutMonthLabel2").textContent = label;
     document.getElementById("accountsMonthLabel").textContent = label;
+    document.getElementById("monthJump").value = selectedMonth;
   }
 
   function card(label, value, hintHtml, actionBtnHtml) {
@@ -1180,6 +1181,10 @@
     const confirmBtn = document.getElementById("importPreviewConfirm");
     confirmBtn.textContent = "Import " + included + " Transaction" + (included === 1 ? "" : "s");
     confirmBtn.disabled = included === 0;
+    const ignoreDupBtn = document.getElementById("importIgnoreDuplicates");
+    const includedDupCount = rows.filter((r) => r.classList.contains("import-dup-row") && r.querySelector(".import-include").checked).length;
+    ignoreDupBtn.disabled = includedDupCount === 0;
+    ignoreDupBtn.textContent = includedDupCount > 0 ? "Ignore All Duplicates (" + includedDupCount + ")" : "Ignore All Duplicates";
   }
 
   // ---------- event wiring ----------
@@ -1201,6 +1206,12 @@
     });
     document.addEventListener("click", () => {
       document.querySelectorAll(".menu-dropdown.show").forEach((m) => m.classList.remove("show"));
+    });
+
+    document.getElementById("monthJump").addEventListener("change", (e) => {
+      if (!e.target.value) return; // cleared rather than a real month picked — ignore, keep the current month
+      selectedMonth = e.target.value;
+      renderAll();
     });
 
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
@@ -1247,6 +1258,10 @@
       if (e.target.classList.contains("import-include") || e.target.classList.contains("import-category")) {
         updateImportPreviewSummary();
       }
+    });
+    document.getElementById("importIgnoreDuplicates").addEventListener("click", () => {
+      document.querySelectorAll("#importPreviewBody tr.import-dup-row .import-include").forEach((cb) => { cb.checked = false; });
+      updateImportPreviewSummary();
     });
     document.getElementById("importPreviewCancel").addEventListener("click", () => {
       document.getElementById("importPreviewBackdrop").classList.remove("show");
