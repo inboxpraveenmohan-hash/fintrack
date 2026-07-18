@@ -95,6 +95,7 @@ input[type=file]{display:none;}
 .menu-dropdown.show{display:block;}
 .menu-item{display:block;width:100%;text-align:left;background:transparent;border:none;padding:8px 10px;font-size:13px;font-weight:500;color:var(--text);border-radius:6px;cursor:pointer;white-space:nowrap;}
 .menu-item:hover{background:var(--row-tint);color:var(--primary);}
+.menu-divider{height:1px;background:var(--border);margin:4px 6px;}
 
 /* Stat cards */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}

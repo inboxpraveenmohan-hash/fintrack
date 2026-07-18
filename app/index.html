@@ -59,24 +59,19 @@
 
   <div class="toolbar">
     <div class="menu-wrap">
-      <button class="btn primary" data-menu-toggle="importMenu">Import ▾</button>
-      <div class="menu-dropdown" id="importMenu">
+      <button class="btn primary" data-menu-toggle="dataMenu">Data ▾</button>
+      <div class="menu-dropdown" id="dataMenu">
         <button class="menu-item" id="btnCdsl">Import from CDSL</button>
         <button class="menu-item" id="btnImport">Import CSV / Excel</button>
         <button class="menu-item" id="btnTemplate">Download Template</button>
         <button class="menu-item" id="btnSample">Load Sample Portfolio</button>
-      </div>
-    </div>
-    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
-    <input type="file" id="cdslFileInput" accept=".csv,.txt">
-
-    <div class="menu-wrap">
-      <button class="btn" data-menu-toggle="exportMenu">Export ▾</button>
-      <div class="menu-dropdown" id="exportMenu">
+        <div class="menu-divider"></div>
         <button class="menu-item" id="btnExportCsv">Export CSV</button>
         <button class="menu-item" id="btnExportXlsx">Export Excel</button>
       </div>
     </div>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+    <input type="file" id="cdslFileInput" accept=".csv,.txt">
 
     <button class="btn danger" id="btnReset">Reset All Data</button>
   </div>

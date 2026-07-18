@@ -193,6 +193,8 @@
   let chartCustomizeTarget = null; // "topLevel" | "category" — which donut chart the modal is editing
   let pendingImport = null; // { categories, accounts, transactions, newCategoryIds } — awaiting review in the import preview modal
   let pendingStatementAccountName = null; // account chosen/typed in the statement-import account picker, before the file is chosen
+  let expandedTxnCardId = null; // which mobile transaction card is expanded — survives re-renders so an edit doesn't collapse it
+  let addTxnSessionCount = 0; // how many transactions "Add Another" has committed since the add modal was opened
 
   let storageWarned = false;
   function persist() {
@@ -803,18 +805,6 @@
       rows = rows.filter((t) => t.item.toLowerCase().includes(q));
     }
 
-    const firstCat = tracker().categories.find((c) => isLeafCategory(c) && !c.archived) || tracker().categories.find((c) => !c.parentId);
-    const firstAcct = tracker().accounts[0];
-    let html = '<tr class="add-row">' +
-      '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" id="newTxnDate" value="' + todayStr() + '"></td>' +
-      '<td class="left"><input class="cell-input name-input" placeholder="Item" id="newTxnItem"></td>' +
-      '<td class="left"><select class="cell-input" style="width:170px;" id="newTxnCategory">' + categorySelectOptions(firstCat && firstCat.id) + "</select></td>" +
-      '<td class="left"><select class="cell-input" style="width:110px;" id="newTxnAccount">' + acctOptions(firstAcct && firstAcct.id) + "</select></td>" +
-      '<td><select class="cell-input" style="width:auto;" id="newTxnDirection"><option value="out" selected>Out</option><option value="in">In</option></select></td>' +
-      '<td><input class="cell-input amount" type="number" placeholder="Amount" id="newTxnAmount"></td>' +
-      '<td><button class="btn primary" style="padding:5px 10px;font-size:11px;" data-action="add-txn">+ Add</button></td>' +
-      "</tr>";
-
     const rowsHtml = rows.map((t) => {
       const amtClass = t.direction === "in" ? "neg" : "pos";
       return "<tr>" +
@@ -831,9 +821,65 @@
         "</tr>";
     }).join("");
 
-    html += rowsHtml || ('<tr><td colspan="7" class="empty-msg">No transactions ' + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".</td></tr>");
+    const emptyMsg = "No transactions " + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".";
+    document.getElementById("txnBody").innerHTML =
+      rowsHtml || ('<tr><td colspan="7" class="empty-msg">' + emptyMsg + "</td></tr>");
 
-    document.getElementById("txnBody").innerHTML = html;
+    // Mobile card rendering of the same rows — hidden on desktop (and vice versa) purely via
+    // CSS, so both are always in the DOM. The card inputs reuse the exact data-type/data-id/
+    // data-field convention, which means the one delegated "change" handler below serves both
+    // representations without knowing which one the user is looking at.
+    const cardsHtml = rows.map((t) => {
+      const cat = findCategory(t.categoryId);
+      const acct = findAccount(t.accountId);
+      const dayChip = t.date ? t.date.slice(8, 10) + " " + (MONTH_NAMES[Number(t.date.slice(5, 7)) - 1] || "") : "?";
+      const isIn = t.direction === "in";
+      return '<div class="txn-card' + (t.id === expandedTxnCardId ? " expanded" : "") + '" data-txn-card="' + t.id + '">' +
+        '<div class="txn-top"><span class="txn-item-label">' + escapeHtml(t.item) + '</span><span class="txn-amt ' + (isIn ? "in" : "out") + '">' + (isIn ? "+" : "−") + fmtINR(t.amount) + "</span></div>" +
+        '<div class="txn-meta"><span class="tchip">' + dayChip + '</span><span class="tchip cat">' + escapeHtml(cat ? cat.name : "?") + '</span><span class="tchip">' + escapeHtml(acct ? acct.name : "?") + '</span><span class="tchip ' + (isIn ? "dir-in" : "dir-out") + '">' + (isIn ? "In" : "Out") + "</span></div>" +
+        '<div class="txn-edit"><div class="field-grid">' +
+        '<div class="field"><label>Date</label><input type="date" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></div>' +
+        '<div class="field"><label>Amount</label><input type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></div>' +
+        '<div class="field" style="grid-column:1/-1;"><label>Item</label><input data-type="txn" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></div>' +
+        '<div class="field"><label>Category</label><select data-type="txn" data-id="' + t.id + '" data-field="categoryId">' + categorySelectOptions(t.categoryId) + "</select></div>" +
+        '<div class="field"><label>Account</label><select data-type="txn" data-id="' + t.id + '" data-field="accountId">' + acctOptions(t.accountId) + "</select></div>" +
+        '<div class="field"><label>In / Out</label><select data-type="txn" data-id="' + t.id + '" data-field="direction"><option value="out"' + (isIn ? "" : " selected") + '>Out</option><option value="in"' + (isIn ? " selected" : "") + ">In</option></select></div>" +
+        '</div><div class="txn-edit-actions"><button class="del-link" data-action="delete-txn" data-id="' + t.id + '">✕ Delete</button><span class="tchip">changes save instantly</span></div></div>' +
+        "</div>";
+    }).join("");
+    document.getElementById("txnCards").innerHTML = cardsHtml || '<div class="empty-msg">' + emptyMsg + "</div>";
+
+    populateAddTxnSelects();
+  }
+
+  // The add-transaction modal's selects need refreshing whenever categories/accounts change;
+  // current selections are preserved across refreshes so back-to-back adds keep their values.
+  function populateAddTxnSelects() {
+    const catSel = document.getElementById("newTxnCategory");
+    const acctSel = document.getElementById("newTxnAccount");
+    const firstCat = tracker().categories.find((c) => isLeafCategory(c) && !c.archived) || tracker().categories.find((c) => !c.parentId);
+    const firstAcct = tracker().accounts[0];
+    const prevCat = catSel.value;
+    const prevAcct = acctSel.value;
+    catSel.innerHTML = categorySelectOptions(prevCat || (firstCat && firstCat.id));
+    if (prevCat) catSel.value = prevCat;
+    acctSel.innerHTML = acctOptions(prevAcct || (firstAcct && firstAcct.id));
+    if (prevAcct) acctSel.value = prevAcct;
+    const dateInput = document.getElementById("newTxnDate");
+    if (!dateInput.value) dateInput.value = todayStr();
+  }
+
+  function openAddTxnModal() {
+    addTxnSessionCount = 0;
+    const counter = document.getElementById("addTxnCount");
+    counter.style.display = "none";
+    counter.textContent = "";
+    document.getElementById("newTxnDate").value = todayStr();
+    document.getElementById("newTxnItem").value = "";
+    document.getElementById("newTxnAmount").value = "";
+    populateAddTxnSelects();
+    document.getElementById("addTxnBackdrop").classList.add("show");
+    document.getElementById("newTxnItem").focus();
   }
 
   // Each top-level group is itself a selectable "All <Group>" option (matches every
@@ -841,17 +887,23 @@
   // sub-categories underneath via <optgroup> for the same at-a-glance hierarchy as the
   // add-transaction category picker.
   function renderTxnFilterOptions() {
-    const sel = document.getElementById("txnFilterCategory");
-    const current = sel.value;
-    sel.innerHTML = '<option value="">All</option>' +
+    const optionsHtml = '<option value="">All</option>' +
       tracker().categories.filter((c) => !c.parentId).map((top) => {
         const subs = tracker().categories.filter((c) => c.parentId === top.id);
         const opts = '<option value="' + top.id + '">All ' + escapeHtml(top.name) + "</option>" +
           subs.map((s) => '<option value="' + s.id + '">' + escapeHtml(s.name) + "</option>").join("");
         return '<optgroup label="' + escapeHtml(top.name) + '">' + opts + "</optgroup>";
       }).join("");
+    // Two selects share one filter state: the desktop one lives in the table header (hidden on
+    // mobile along with the table), the mobile one sits in the section head next to Sort.
+    const sel = document.getElementById("txnFilterCategory");
+    const current = sel.value;
+    sel.innerHTML = optionsHtml;
     sel.value = current;
     filterCategoryId = sel.value;
+    const selM = document.getElementById("txnFilterCategoryM");
+    selM.innerHTML = optionsHtml;
+    selM.value = filterCategoryId;
   }
 
   function parentSelectOptions(categories, selectedParentId, excludeId) {
@@ -1213,6 +1265,47 @@
       selectedMonth = e.target.value;
       renderAll();
     });
+    // On mobile the month input is visually hidden and this icon opens its native picker wheel
+    // instead; showPicker() needs a user gesture and isn't universal, so fall back to focus().
+    document.getElementById("btnMonthCal").addEventListener("click", () => {
+      const inp = document.getElementById("monthJump");
+      try { if (inp.showPicker) inp.showPicker(); else inp.focus(); } catch (err) { inp.focus(); }
+    });
+
+    document.getElementById("btnAddTxn").addEventListener("click", openAddTxnModal);
+    document.getElementById("fabAddTxn").addEventListener("click", openAddTxnModal);
+    document.getElementById("addTxnCancel").addEventListener("click", () => {
+      document.getElementById("addTxnBackdrop").classList.remove("show");
+    });
+    // Enter anywhere in the add modal = "Add Another" — supports keyboard-only rapid entry
+    // (item → tab → amount → Enter → repeat). Buttons are exempt so Enter still activates a
+    // focused button normally. The global Enter-to-commit handler below only targets
+    // .cell-input fields, so it never fires for these modal fields.
+    document.getElementById("addTxnBackdrop").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.tagName !== "BUTTON") {
+        e.preventDefault();
+        document.querySelector('#addTxnBackdrop [data-action="add-txn-another"]').click();
+      }
+    });
+
+    // Tapping a mobile transaction card toggles its inline editor; taps on the editor's own
+    // fields/buttons must not re-collapse it.
+    document.getElementById("txnCards").addEventListener("click", (e) => {
+      if (e.target.closest("input, select, button, label")) return;
+      const card = e.target.closest("[data-txn-card]");
+      if (!card) return;
+      const id = card.dataset.txnCard;
+      expandedTxnCardId = expandedTxnCardId === id ? null : id;
+      document.querySelectorAll("#txnCards .txn-card").forEach((c) => {
+        c.classList.toggle("expanded", c.dataset.txnCard === expandedTxnCardId);
+      });
+    });
+
+    document.getElementById("txnFilterCategoryM").addEventListener("change", (e) => {
+      filterCategoryId = e.target.value;
+      document.getElementById("txnFilterCategory").value = filterCategoryId;
+      renderTransactions(computeDerivedTracker());
+    });
 
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -1395,6 +1488,7 @@
     });
     document.getElementById("txnFilterCategory").addEventListener("change", (e) => {
       filterCategoryId = e.target.value;
+      document.getElementById("txnFilterCategoryM").value = filterCategoryId;
       renderTransactions(computeDerivedTracker());
     });
     document.getElementById("txnSortOrder").addEventListener("change", (e) => {
@@ -1538,7 +1632,12 @@
         return;
       }
 
-      if (action === "add-txn") {
+      if (action === "add-txn" || action === "add-txn-another") {
+        // "add-txn" (+ Add & Done) commits and closes; "add-txn-another" commits, then clears
+        // just Item and Amount and keeps the modal open for rapid back-to-back entry — Date,
+        // Category, Account, and In/Out deliberately stay filled, since consecutive entries
+        // usually share them. A counter chip in the modal header tracks the running session.
+        const keepOpen = action === "add-txn-another";
         const date = document.getElementById("newTxnDate").value || todayStr();
         const item = document.getElementById("newTxnItem").value.trim();
         const categoryId = document.getElementById("newTxnCategory").value;
@@ -1559,7 +1658,18 @@
         tracker().transactions.push({ id: uid("txn"), date, item, amount, direction, categoryId, accountId });
         persist();
         renderAll();
-        toast("Transaction added.");
+        if (keepOpen) {
+          addTxnSessionCount++;
+          const counter = document.getElementById("addTxnCount");
+          counter.style.display = "";
+          counter.textContent = addTxnSessionCount + " added";
+          document.getElementById("newTxnItem").value = "";
+          document.getElementById("newTxnAmount").value = "";
+          document.getElementById("newTxnItem").focus();
+        } else {
+          document.getElementById("addTxnBackdrop").classList.remove("show");
+          toast("Transaction added.");
+        }
         return;
       }
       if (action === "delete-txn") {
