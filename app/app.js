@@ -78,7 +78,7 @@
   }
 
   function emptyData() {
-    return { updated: new Date().toISOString().slice(0, 10), monthlyInvestment: 0, sipMode: "target", assetClasses: [], otherAssets: [] };
+    return { updated: new Date().toISOString().slice(0, 10), monthlyInvestment: 0, sipMode: "target", assetClasses: [], otherAssets: [], priceWorkerUrl: "" };
   }
 
   function allGroupIds(data) {
@@ -128,6 +128,7 @@
       if (typeof parsed.monthlyInvestment !== "number") parsed.monthlyInvestment = seed.monthlyInvestment;
       if (!parsed.sipMode) parsed.sipMode = seed.sipMode;
       if (!parsed.updated) parsed.updated = seed.updated;
+      if (typeof parsed.priceWorkerUrl !== "string") parsed.priceWorkerUrl = "";
       return parsed;
     } catch (e) {
       return seedData();
@@ -278,7 +279,8 @@
               "<td>—</td>" +
               "<td>—</td>" +
               '<td><input class="cell-input small" type="number" step="1" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="sipPct" value="' + numOr0(h.sipPct) + '"> % → ' + fmtINR(h.sipAmount) + "</td>" +
-              '<td><button class="icon-btn" data-action="delete-holding" data-id="' + h.id + '" data-parent="' + ac.id + '" title="Delete holding">✕</button></td>' +
+              "<td>" + priceLinkBtn(h, ac.id, "class") +
+                '<button class="icon-btn" data-action="delete-holding" data-id="' + h.id + '" data-parent="' + ac.id + '" title="Delete holding">✕</button></td>' +
             "</tr>"
           );
         });
@@ -371,7 +373,8 @@
               '<td class="left"><input class="cell-input name-input" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="name" value="' + escapeAttr(h.name) + '"></td>' +
               '<td><input class="cell-input amount" type="number" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></td>' +
               "<td>—</td>" +
-              '<td><button class="icon-btn" data-action="delete-other-holding" data-id="' + h.id + '" data-parent="' + o.id + '" title="Delete item">✕</button></td>' +
+              "<td>" + priceLinkBtn(h, o.id, "other") +
+                '<button class="icon-btn" data-action="delete-other-holding" data-id="' + h.id + '" data-parent="' + o.id + '" title="Delete item">✕</button></td>' +
             "</tr>"
           );
         });
@@ -468,6 +471,20 @@
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  function isPriceLinked(h) { return !!(h.priceSource && h.symbol); }
+
+  function priceLinkBtn(h, parentId, kind) {
+    const linked = isPriceLinked(h);
+    let title = "Link live price (value = units × market price)";
+    if (linked) {
+      const src = h.priceSource === "mf" ? "MF" : "Stock";
+      title = src + ": " + (h.symbolName || h.symbol);
+      if (Number(h.units)) title += " · " + h.units + " units";
+      if (Number(h.lastPrice)) title += " · last price " + h.lastPrice + (h.lastPriceCurrency && h.lastPriceCurrency !== "INR" ? " " + h.lastPriceCurrency : "") + (h.lastPriceAt ? " (" + fmtDateTime(h.lastPriceAt) + ")" : "");
+    }
+    return '<button class="icon-btn price-link-btn' + (linked ? " linked" : "") + '" data-action="link-price" data-id="' + h.id + '" data-parent="' + parentId + '" data-kind="' + kind + '" title="' + escapeAttr(title) + '">₹</button>';
+  }
+
   function findClass(id) { return state.assetClasses.find((a) => a.id === id); }
   function findHolding(classId, id) { const ac = findClass(classId); return ac ? ac.holdings.find((h) => h.id === id) : null; }
   function findOther(id) { return state.otherAssets.find((o) => o.id === id); }
@@ -532,27 +549,38 @@
   }
 
   // ---------- CSV / XLSX import-export ----------
-  const HEADER_ORDER = ["Section", "Name", "Parent", "CurrentValue", "TargetPct", "SIPPct", "MonthlyContribution", "ISIN", "ManualSipPct"];
+  const HEADER_ORDER = ["Section", "Name", "Parent", "CurrentValue", "TargetPct", "SIPPct", "MonthlyContribution", "ISIN", "ManualSipPct", "Units", "PriceSource", "Symbol", "SymbolName"];
+
+  function emptyRow() {
+    const r = {};
+    HEADER_ORDER.forEach((k) => { r[k] = ""; });
+    return r;
+  }
+
+  function holdingPriceCols(h) {
+    return { Units: h.units != null && h.units !== "" ? h.units : "", PriceSource: h.priceSource || "", Symbol: h.symbol || "", SymbolName: h.symbolName || "" };
+  }
 
   function toRows(data) {
     const rows = [];
-    rows.push({ Section: "Meta", Name: "MonthlyInvestment", Parent: "", CurrentValue: data.monthlyInvestment, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
-    rows.push({ Section: "Meta", Name: "Updated", Parent: "", CurrentValue: data.updated, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
-    rows.push({ Section: "Meta", Name: "SipMode", Parent: "", CurrentValue: data.sipMode || "target", TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: "" });
+    rows.push(Object.assign(emptyRow(), { Section: "Meta", Name: "MonthlyInvestment", CurrentValue: data.monthlyInvestment }));
+    rows.push(Object.assign(emptyRow(), { Section: "Meta", Name: "Updated", CurrentValue: data.updated }));
+    rows.push(Object.assign(emptyRow(), { Section: "Meta", Name: "SipMode", CurrentValue: data.sipMode || "target" }));
+    if (data.priceWorkerUrl) rows.push(Object.assign(emptyRow(), { Section: "Meta", Name: "PriceWorkerUrl", CurrentValue: data.priceWorkerUrl }));
     data.assetClasses.forEach((ac) => {
-      rows.push({ Section: "AssetClass", Name: ac.name, Parent: "", CurrentValue: "", TargetPct: ac.targetPct, SIPPct: "", MonthlyContribution: "", ISIN: "", ManualSipPct: ac.manualSipPct });
+      rows.push(Object.assign(emptyRow(), { Section: "AssetClass", Name: ac.name, TargetPct: ac.targetPct, ManualSipPct: ac.manualSipPct }));
       ac.holdings.forEach((h) => {
-        rows.push({ Section: "Holding", Name: h.name, Parent: ac.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: h.sipPct, MonthlyContribution: "", ISIN: h.isin || "", ManualSipPct: "" });
+        rows.push(Object.assign(emptyRow(), { Section: "Holding", Name: h.name, Parent: ac.name, CurrentValue: h.currentValue, SIPPct: h.sipPct, ISIN: h.isin || "" }, holdingPriceCols(h)));
       });
     });
     data.otherAssets.forEach((o) => {
       if (Array.isArray(o.holdings)) {
-        rows.push({ Section: "OtherGroup", Name: o.name, Parent: "", CurrentValue: "", TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "", ManualSipPct: "" });
+        rows.push(Object.assign(emptyRow(), { Section: "OtherGroup", Name: o.name, MonthlyContribution: o.monthlyContribution }));
         o.holdings.forEach((h) => {
-          rows.push({ Section: "OtherHolding", Name: h.name, Parent: o.name, CurrentValue: h.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: "", ISIN: h.isin || "", ManualSipPct: "" });
+          rows.push(Object.assign(emptyRow(), { Section: "OtherHolding", Name: h.name, Parent: o.name, CurrentValue: h.currentValue, ISIN: h.isin || "" }, holdingPriceCols(h)));
         });
       } else {
-        rows.push({ Section: "Other", Name: o.name, Parent: "", CurrentValue: o.currentValue, TargetPct: "", SIPPct: "", MonthlyContribution: o.monthlyContribution, ISIN: "", ManualSipPct: "" });
+        rows.push(Object.assign(emptyRow(), { Section: "Other", Name: o.name, CurrentValue: o.currentValue, MonthlyContribution: o.monthlyContribution }));
       }
     });
     return rows;
@@ -565,6 +593,21 @@
     if (v === "" || v === null || v === undefined) return 0;
     const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
     return isNaN(n) ? 0 : n;
+  }
+
+  // Live-price columns are optional (older CSVs simply don't have them): a source only
+  // counts as linked when both PriceSource and Symbol survive the trip.
+  function parsePriceCols(r) {
+    const units = parseAmount(r.Units);
+    const src = String(r.PriceSource || "").trim();
+    const symbol = String(r.Symbol || "").trim();
+    const linked = (src === "mf" || src === "stock") && symbol !== "";
+    return {
+      units: units > 0 ? units : null,
+      priceSource: linked ? src : null,
+      symbol: linked ? symbol : null,
+      symbolName: linked ? (String(r.SymbolName || "").trim() || symbol) : null
+    };
   }
 
   function parseRows(rows) {
@@ -592,6 +635,7 @@
         if (name === "MonthlyInvestment") data.monthlyInvestment = parseAmount(r.CurrentValue);
         if (name === "Updated" && r.CurrentValue) data.updated = String(r.CurrentValue).trim();
         if (name === "SipMode" && ["target", "deviation", "manual"].includes(String(r.CurrentValue).trim())) data.sipMode = String(r.CurrentValue).trim();
+        if (name === "PriceWorkerUrl" && r.CurrentValue) data.priceWorkerUrl = String(r.CurrentValue).trim();
       }
     });
 
@@ -607,7 +651,7 @@
           data.assetClasses.push(ac);
           classMap[parentName] = ac;
         }
-        ac.holdings.push({ id: uid("h"), name, currentValue: parseAmount(r.CurrentValue), sipPct: parseAmount(r.SIPPct), isin: String(r.ISIN || "").trim() || null });
+        ac.holdings.push(Object.assign({ id: uid("h"), name, currentValue: parseAmount(r.CurrentValue), sipPct: parseAmount(r.SIPPct), isin: String(r.ISIN || "").trim() || null }, parsePriceCols(r)));
       } else if (section === "OtherHolding") {
         const name = String(r.Name || "").trim();
         if (!name) return;
@@ -618,7 +662,7 @@
           data.otherAssets.push(og);
           otherGroupMap[parentName] = og;
         }
-        og.holdings.push({ id: uid("oh"), name, currentValue: parseAmount(r.CurrentValue), isin: String(r.ISIN || "").trim() || null });
+        og.holdings.push(Object.assign({ id: uid("oh"), name, currentValue: parseAmount(r.CurrentValue), isin: String(r.ISIN || "").trim() || null }, parsePriceCols(r)));
       } else if (section === "Other") {
         const name = String(r.Name || "").trim();
         if (!name) return;
@@ -656,6 +700,12 @@
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   }
 
+  function fmtDateTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso || "");
+    return d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+
   function exportCSV(data, filename) {
     const ws = buildWorksheet(data);
     downloadBlob(XLSX.utils.sheet_to_csv(ws), filename, "text/csv");
@@ -686,8 +736,10 @@
         const ok = await confirmDialog("Import portfolio?", "This will replace your current portfolio data with the contents of \"" + file.name + "\". Consider exporting a backup first.");
         if (!ok) return;
         const preservedTracker = state.dailyTracker;
+        const preservedWorkerUrl = state.priceWorkerUrl;
         state = parsed;
         if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
+        if (!state.priceWorkerUrl && preservedWorkerUrl) state.priceWorkerUrl = preservedWorkerUrl; // CSV's own URL wins; older CSVs shouldn't wipe it
         expanded = new Set();
         persist();
         renderAll();
@@ -747,7 +799,9 @@
         if (line === "" || /^\**\s*End of Statement/i.test(line)) { state2 = "SCAN"; continue; }
         if (/^No Record Found/i.test(line)) { state2 = "SCAN"; continue; }
         const f = parseCsvLine(line);
-        if (f.length >= 6 && f[0]) demat.push({ isin: f[0], description: f[1], value: parseFloat(f[5]) || 0 });
+        // f[2] is "CURRENT BALANCE FREE BALANCE" — two space-separated numbers in one cell;
+        // parseFloat reads the first (current balance), which is the unit count we want.
+        if (f.length >= 6 && f[0]) demat.push({ isin: f[0], description: f[1], value: parseFloat(f[5]) || 0, units: parseFloat(f[2]) || 0 });
         continue;
       }
       if (state2 === "AWAIT_MF_HEADER") {
@@ -758,7 +812,7 @@
         if (line === "" || /^\**\s*End of Statement/i.test(line)) { state2 = "SCAN"; continue; }
         if (/^No Record Found/i.test(line)) { state2 = "SCAN"; continue; }
         const f = parseCsvLine(line);
-        if (f.length >= 9 && f[2]) mf.push({ isin: f[2], description: f[4], value: parseFloat(f[8]) || 0 });
+        if (f.length >= 9 && f[2]) mf.push({ isin: f[2], description: f[4], value: parseFloat(f[8]) || 0, units: parseFloat(f[6]) || 0 }); // f[6] = CLOSING UNITS
         continue;
       }
     }
@@ -769,9 +823,10 @@
     const map = new Map();
     [...demat, ...mf].forEach((row) => {
       if (!row.isin || row.value <= 0) return;
-      if (!map.has(row.isin)) map.set(row.isin, { isin: row.isin, value: 0, descriptions: [] });
+      if (!map.has(row.isin)) map.set(row.isin, { isin: row.isin, value: 0, units: 0, descriptions: [] });
       const entry = map.get(row.isin);
       entry.value += row.value;
+      entry.units += Number(row.units) || 0;
       if (!entry.descriptions.includes(row.description)) entry.descriptions.push(row.description);
     });
     const out = [];
@@ -779,7 +834,7 @@
       const description = entry.descriptions.reduce((a, b) => (b.length > a.length ? b : a), "");
       const matchText = entry.descriptions.join(" | ");
       const isBond = /\bNCD\b/i.test(matchText) || /\bBOND\b/i.test(matchText) || /\bSGB\b/i.test(matchText) || /\bG-?SEC\b/i.test(matchText) || /\bT-?BILL\b/i.test(matchText) || /\bGILT\b/i.test(matchText);
-      out.push({ isin: entry.isin, description, matchText, value: entry.value, isBond });
+      out.push({ isin: entry.isin, description, matchText, value: entry.value, units: entry.units, isBond });
     });
     return out;
   }
@@ -821,7 +876,7 @@
       if (h.isin && aggByIsin.has(h.isin) && !claimedIsins.has(h.isin)) {
         const entry = aggByIsin.get(h.isin);
         claimedIsins.add(h.isin);
-        matches.push({ holdingId: h.id, kind: ref.kind, parentId: ref.parentId, holdingName: h.name, parentName: ref.parentName, oldValue: h.currentValue, newValue: entry.value, isin: entry.isin, basis: "Matched by ISIN", checked: true });
+        matches.push({ holdingId: h.id, kind: ref.kind, parentId: ref.parentId, holdingName: h.name, parentName: ref.parentName, oldValue: h.currentValue, newValue: entry.value, newUnits: entry.units, isin: entry.isin, basis: "Matched by ISIN", checked: true });
       } else {
         unmatchedHoldingRefs.push(ref);
       }
@@ -841,7 +896,7 @@
       if (claimedHoldingIds.has(c.ref.h.id) || claimedIsins.has(c.entry.isin)) return;
       claimedHoldingIds.add(c.ref.h.id);
       claimedIsins.add(c.entry.isin);
-      matches.push({ holdingId: c.ref.h.id, kind: c.ref.kind, parentId: c.ref.parentId, holdingName: c.ref.h.name, parentName: c.ref.parentName, oldValue: c.ref.h.currentValue, newValue: c.entry.value, isin: c.entry.isin, basis: Math.round(c.score * 100) + '% name match: "' + c.entry.description + '"', checked: true });
+      matches.push({ holdingId: c.ref.h.id, kind: c.ref.kind, parentId: c.ref.parentId, holdingName: c.ref.h.name, parentName: c.ref.parentName, oldValue: c.ref.h.currentValue, newValue: c.entry.value, newUnits: c.entry.units, isin: c.entry.isin, basis: Math.round(c.score * 100) + '% name match: "' + c.entry.description + '"', checked: true });
     });
 
     const matchedHoldingIds = new Set(matches.map((m) => m.holdingId));
@@ -852,6 +907,7 @@
       isin: e.isin,
       description: e.description,
       value: e.value,
+      units: e.units,
       isBond: e.isBond,
       checked: e.isBond,
       classChoice: e.isBond ? (bondsGroup ? "other:" + bondsGroup.id : "__new_other__") : "",
@@ -949,6 +1005,7 @@
       if (h) {
         h.currentValue = m.newValue;
         if (!h.isin) h.isin = m.isin;
+        if (m.newUnits > 0) h.units = m.newUnits; // feeds the live-price refresh (value = units × price)
         updatedCount++;
       }
     });
@@ -980,18 +1037,18 @@
           newGroupCache[key] = target;
         }
         target.holdings.push(choice === "__new_class__"
-          ? { id: uid("h"), name: e.description, currentValue: e.value, sipPct: 0, isin: e.isin }
-          : { id: uid("oh"), name: e.description, currentValue: e.value, isin: e.isin });
+          ? { id: uid("h"), name: e.description, currentValue: e.value, sipPct: 0, isin: e.isin, units: e.units > 0 ? e.units : null }
+          : { id: uid("oh"), name: e.description, currentValue: e.value, isin: e.isin, units: e.units > 0 ? e.units : null });
         addedCount++;
       } else if (choice.startsWith("class:")) {
         const targetClass = findClass(choice.slice(6));
         if (!targetClass) return;
-        targetClass.holdings.push({ id: uid("h"), name: e.description, currentValue: e.value, sipPct: 0, isin: e.isin });
+        targetClass.holdings.push({ id: uid("h"), name: e.description, currentValue: e.value, sipPct: 0, isin: e.isin, units: e.units > 0 ? e.units : null });
         addedCount++;
       } else if (choice.startsWith("other:")) {
         const targetGroup = findOther(choice.slice(6));
         if (!targetGroup || !Array.isArray(targetGroup.holdings)) return;
-        targetGroup.holdings.push({ id: uid("oh"), name: e.description, currentValue: e.value, isin: e.isin });
+        targetGroup.holdings.push({ id: uid("oh"), name: e.description, currentValue: e.value, isin: e.isin, units: e.units > 0 ? e.units : null });
         addedCount++;
       }
     });
@@ -1019,6 +1076,334 @@
       }
     };
     reader.readAsText(file);
+  }
+
+  // ---------- live prices ----------
+  // Two independent sources, chosen per holding:
+  //   "mf"    -> api.mfapi.in (AMFI NAVs; CORS-open, keyless, works with zero setup)
+  //   "stock" -> the user's own Cloudflare Worker relay (worker/price-proxy.js) in front of
+  //              Yahoo Finance — needed because Yahoo blocks direct browser (CORS) requests.
+  //              Covers NSE (.NS) / BSE (.BO) / US tickers plus the USDINR=X rate used to
+  //              convert USD-quoted holdings into ₹.
+  const MFAPI_BASE = "https://api.mfapi.in";
+  let mfListCache = null; // full AMFI scheme list (~few MB) — kept in memory only, never persisted
+
+  function workerBase() {
+    return (state.priceWorkerUrl || "").trim().replace(/\/+$/, "");
+  }
+
+  async function fetchJson(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return resp.json();
+  }
+
+  async function fetchMfList() {
+    if (!mfListCache) mfListCache = await fetchJson(MFAPI_BASE + "/mf");
+    return mfListCache;
+  }
+
+  async function fetchMfNav(schemeCode) {
+    const j = await fetchJson(MFAPI_BASE + "/mf/" + encodeURIComponent(schemeCode) + "/latest");
+    const row = j && j.data && j.data[0];
+    const nav = row && parseFloat(row.nav);
+    if (!nav || !isFinite(nav)) throw new Error("no NAV published");
+    return { price: nav, currency: "INR" };
+  }
+
+  async function fetchStockQuotes(symbols) {
+    const base = workerBase();
+    if (!base) throw new Error("no-worker");
+    return fetchJson(base + "/quote?symbols=" + encodeURIComponent(symbols.join(",")));
+  }
+
+  // Every holding across both tables, with enough context to find it again.
+  function allHoldingRefsForPrices() {
+    const refs = [];
+    state.assetClasses.forEach((ac) => ac.holdings.forEach((h) => refs.push({ h, kind: "class", parentId: ac.id })));
+    state.otherAssets.forEach((o) => {
+      if (Array.isArray(o.holdings)) o.holdings.forEach((h) => refs.push({ h, kind: "other", parentId: o.id }));
+    });
+    return refs;
+  }
+
+  function findHoldingByKind(kind, parentId, id) {
+    return kind === "class" ? findHolding(parentId, id) : findOtherHolding(parentId, id);
+  }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  async function refreshPrices() {
+    const btn = document.getElementById("btnRefreshPrices");
+    const linked = allHoldingRefsForPrices().filter((r) => isPriceLinked(r.h));
+    if (linked.length === 0) {
+      toast("No holdings linked yet — use the ₹ button on a holding row to link one.");
+      return;
+    }
+    btn.disabled = true;
+    const oldLabel = btn.textContent;
+    btn.textContent = "Refreshing…";
+    try {
+      const failures = [];
+      const ready = [];
+      linked.forEach((r) => {
+        if (Number(r.h.units) > 0) ready.push(r);
+        else failures.push({ name: r.h.name, reason: "no units set" });
+      });
+
+      // Mutual funds: one mfapi call per unique scheme code.
+      const mfRefs = ready.filter((r) => r.h.priceSource === "mf");
+      const mfCodes = [...new Set(mfRefs.map((r) => String(r.h.symbol)))];
+      const mfResults = {};
+      await Promise.all(mfCodes.map(async (code) => {
+        try { mfResults[code] = await fetchMfNav(code); }
+        catch (e) { mfResults[code] = { error: e.message }; }
+      }));
+
+      // Stocks: one Worker call for all unique symbols, plus USDINR=X for ₹ conversion.
+      const stockRefs = ready.filter((r) => r.h.priceSource === "stock");
+      let stockResults = {};
+      let workerError = null;
+      if (stockRefs.length > 0) {
+        const symbols = [...new Set(stockRefs.map((r) => String(r.h.symbol)))];
+        try {
+          stockResults = await fetchStockQuotes(symbols.concat("USDINR=X"));
+        } catch (e) {
+          workerError = e.message === "no-worker"
+            ? "Worker not set up (Data ▾ → Live Price Settings)"
+            : "Worker request failed: " + e.message;
+        }
+      }
+      const fxQuote = stockResults["USDINR=X"];
+      const usdInr = fxQuote && !fxQuote.error ? fxQuote.price : null;
+
+      let updated = 0;
+      const now = new Date().toISOString();
+      ready.forEach((r) => {
+        const h = r.h;
+        let quote;
+        if (h.priceSource === "mf") {
+          quote = mfResults[String(h.symbol)];
+        } else if (workerError) {
+          failures.push({ name: h.name, reason: workerError });
+          return;
+        } else {
+          quote = stockResults[String(h.symbol)];
+        }
+        if (!quote || quote.error) {
+          failures.push({ name: h.name, reason: (quote && quote.error) || "no data" });
+          return;
+        }
+        let fx = 1;
+        if (quote.currency && quote.currency !== "INR") {
+          if (quote.currency === "USD" && usdInr) fx = usdInr;
+          else { failures.push({ name: h.name, reason: usdInr ? "unsupported currency " + quote.currency : "USD→INR rate unavailable" }); return; }
+        }
+        h.lastPrice = quote.price;
+        h.lastPriceCurrency = quote.currency || "INR";
+        h.lastPriceAt = now;
+        h.currentValue = round2(Number(h.units) * quote.price * fx);
+        updated++;
+      });
+
+      if (updated > 0) { persist(); renderAll(); }
+      let msg = "Prices refreshed: " + updated + " holding(s) updated";
+      if (failures.length > 0) msg += ", " + failures.length + " failed (" + failures[0].name + ": " + failures[0].reason + (failures.length > 1 ? ", …" : "") + ")";
+      toast(msg + ".");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldLabel;
+    }
+  }
+
+  // Bulk-link mutual funds using the ISINs a CDSL import stamped on holdings: the full
+  // mfapi scheme list carries each scheme's growth/reinvestment ISINs, so no typing needed.
+  async function autoLinkMfByIsin() {
+    const candidates = allHoldingRefsForPrices().filter((r) => r.h.isin && !isPriceLinked(r.h));
+    if (candidates.length === 0) {
+      toast("Nothing to auto-link: every holding with an ISIN is already linked (or none has an ISIN — import a CDSL statement first).");
+      return;
+    }
+    toast("Downloading AMFI scheme list… this takes a few seconds.");
+    let list;
+    try { list = await fetchMfList(); }
+    catch (e) { toast("Could not download the scheme list (" + e.message + "). Check your connection and try again."); return; }
+    const byIsin = new Map();
+    list.forEach((s) => {
+      if (s.isinGrowth) byIsin.set(String(s.isinGrowth).trim().toUpperCase(), s);
+      if (s.isinDivReinvestment) byIsin.set(String(s.isinDivReinvestment).trim().toUpperCase(), s);
+    });
+    let linkedCount = 0;
+    let missingUnits = 0;
+    candidates.forEach((r) => {
+      const scheme = byIsin.get(String(r.h.isin).trim().toUpperCase());
+      if (!scheme) return;
+      r.h.priceSource = "mf";
+      r.h.symbol = String(scheme.schemeCode);
+      r.h.symbolName = scheme.schemeName;
+      linkedCount++;
+      if (!(Number(r.h.units) > 0)) missingUnits++;
+    });
+    if (linkedCount === 0) {
+      toast("No matches found — the ISINs on your holdings don't appear in the AMFI mutual fund list (stocks/bonds need the ₹ button instead).");
+      return;
+    }
+    persist();
+    renderAll();
+    let msg = "Auto-linked " + linkedCount + " mutual fund(s) by ISIN.";
+    if (missingUnits > 0) msg += " " + missingUnits + " of them have no units yet — re-import your CDSL statement or set units via the ₹ button.";
+    toast(msg);
+  }
+
+  // ---------- link-price modal ----------
+  let pendingPriceLink = null; // { kind, parentId, holdingId, chosenScheme: {code, name} | null }
+
+  function openPriceLinkModal(kind, parentId, holdingId) {
+    const h = findHoldingByKind(kind, parentId, holdingId);
+    if (!h) return;
+    pendingPriceLink = { kind, parentId, holdingId, chosenScheme: null };
+    document.getElementById("plHoldingName").textContent = h.name;
+    document.getElementById("plSource").value = h.priceSource || "";
+    document.getElementById("plUnits").value = Number(h.units) > 0 ? h.units : "";
+    document.getElementById("plMfSearch").value = h.priceSource === "mf" && h.symbolName ? h.symbolName : h.name;
+    document.getElementById("plMfResults").innerHTML = "";
+    document.getElementById("plMfResults").style.display = "none";
+    document.getElementById("plStockSymbol").value = h.priceSource === "stock" ? h.symbol : "";
+    document.getElementById("plTestResult").textContent = "";
+    document.getElementById("plTestResult").className = "pl-test-result";
+    if (h.priceSource === "mf" && h.symbol) {
+      pendingPriceLink.chosenScheme = { code: String(h.symbol), name: h.symbolName || ("Scheme " + h.symbol) };
+    }
+    updatePriceLinkBlocks();
+    document.getElementById("priceLinkBackdrop").classList.add("show");
+  }
+
+  function updatePriceLinkBlocks() {
+    const source = document.getElementById("plSource").value;
+    document.getElementById("plMfBlock").style.display = source === "mf" ? "" : "none";
+    document.getElementById("plStockBlock").style.display = source === "stock" ? "" : "none";
+    document.getElementById("plUnitsRow").style.display = source ? "" : "none";
+    const chosenEl = document.getElementById("plMfChosen");
+    const chosen = pendingPriceLink && pendingPriceLink.chosenScheme;
+    chosenEl.textContent = chosen ? "✓ " + chosen.name : "";
+  }
+
+  async function searchMfSchemes() {
+    const q = document.getElementById("plMfSearch").value.trim();
+    if (!q) return;
+    const resultsEl = document.getElementById("plMfResults");
+    resultsEl.style.display = "";
+    resultsEl.innerHTML = '<div class="pl-result" style="cursor:default;color:var(--muted);">Searching…</div>';
+    let results;
+    try { results = await fetchJson(MFAPI_BASE + "/mf/search?q=" + encodeURIComponent(q)); }
+    catch (e) {
+      resultsEl.innerHTML = '<div class="pl-result" style="cursor:default;color:var(--red);">Search failed (' + escapeHtml(e.message) + "). Check your connection.</div>";
+      return;
+    }
+    if (!Array.isArray(results) || results.length === 0) {
+      resultsEl.innerHTML = '<div class="pl-result" style="cursor:default;color:var(--muted);">No schemes matched — try fewer words (e.g. drop “fund”/“plan”).</div>';
+      return;
+    }
+    resultsEl.innerHTML = results.slice(0, 20).map((s) =>
+      '<label class="pl-result"><input type="radio" name="plScheme" value="' + s.schemeCode + '" data-name="' + escapeAttr(s.schemeName) + '"><span>' + escapeHtml(s.schemeName) + "</span></label>"
+    ).join("");
+  }
+
+  async function testStockSymbol() {
+    const sym = document.getElementById("plStockSymbol").value.trim().toUpperCase();
+    const out = document.getElementById("plTestResult");
+    out.className = "pl-test-result";
+    if (!sym) { out.textContent = "Enter a symbol first."; return; }
+    if (!workerBase()) {
+      out.className = "pl-test-result err";
+      out.textContent = "Set up the Worker first: Data ▾ → Live Price Settings.";
+      return;
+    }
+    out.textContent = "Fetching…";
+    try {
+      const res = await fetchStockQuotes([sym]);
+      const q = res[sym];
+      if (!q || q.error) throw new Error((q && q.error) || "no data");
+      out.className = "pl-test-result ok";
+      out.textContent = "✓ " + (q.name || sym) + ": " + q.price + " " + (q.currency || "");
+    } catch (e) {
+      out.className = "pl-test-result err";
+      out.textContent = "✗ " + e.message;
+    }
+  }
+
+  function savePriceLink() {
+    if (!pendingPriceLink) return;
+    const h = findHoldingByKind(pendingPriceLink.kind, pendingPriceLink.parentId, pendingPriceLink.holdingId);
+    if (!h) return;
+    const source = document.getElementById("plSource").value;
+
+    if (!source) {
+      h.priceSource = null; h.symbol = null; h.symbolName = null;
+      h.lastPrice = null; h.lastPriceCurrency = null; h.lastPriceAt = null;
+      persist(); renderAll();
+      document.getElementById("priceLinkBackdrop").classList.remove("show");
+      toast("Live price unlinked — the value is manual again.");
+      return;
+    }
+
+    const units = parseFloat(document.getElementById("plUnits").value);
+    if (!(units > 0)) { toast("Enter the number of units you hold (must be more than 0)."); return; }
+
+    if (source === "mf") {
+      const chosen = pendingPriceLink.chosenScheme;
+      if (!chosen) { toast("Search and pick the mutual fund scheme first."); return; }
+      h.symbol = String(chosen.code);
+      h.symbolName = chosen.name;
+    } else {
+      const sym = document.getElementById("plStockSymbol").value.trim().toUpperCase();
+      if (!sym) { toast("Enter the ticker symbol (e.g. RELIANCE.NS or AAPL)."); return; }
+      h.symbol = sym;
+      h.symbolName = sym;
+    }
+    // Clear any cached quote from a previous link — it belonged to the old symbol.
+    h.priceSource = source;
+    h.units = units;
+    h.lastPrice = null; h.lastPriceCurrency = null; h.lastPriceAt = null;
+    persist(); renderAll();
+    document.getElementById("priceLinkBackdrop").classList.remove("show");
+    toast("Linked. Use ↻ Refresh Prices to fetch the latest value.");
+  }
+
+  // ---------- price settings modal ----------
+  function openPriceSettings() {
+    document.getElementById("psWorkerUrl").value = state.priceWorkerUrl || "";
+    const out = document.getElementById("psTestResult");
+    out.textContent = "";
+    out.className = "pl-test-result";
+    document.getElementById("priceSettingsBackdrop").classList.add("show");
+  }
+
+  async function testWorkerConnection() {
+    const url = document.getElementById("psWorkerUrl").value.trim().replace(/\/+$/, "");
+    const out = document.getElementById("psTestResult");
+    out.className = "pl-test-result";
+    if (!url) { out.textContent = "Enter your Worker URL first."; return; }
+    out.textContent = "Testing…";
+    try {
+      const j = await fetchJson(url + "/");
+      if (j && j.ok && j.service === "fintrack-price-proxy") {
+        out.className = "pl-test-result ok";
+        out.textContent = "✓ Connected — the Worker is up and ready.";
+      } else {
+        throw new Error("that URL responded, but not like the FinTrack price proxy");
+      }
+    } catch (e) {
+      out.className = "pl-test-result err";
+      out.textContent = "✗ " + e.message;
+    }
+  }
+
+  function savePriceSettings() {
+    state.priceWorkerUrl = document.getElementById("psWorkerUrl").value.trim().replace(/\/+$/, "");
+    persist();
+    document.getElementById("priceSettingsBackdrop").classList.remove("show");
+    toast(state.priceWorkerUrl ? "Worker URL saved — stock quotes are enabled." : "Worker URL cleared — only mutual fund NAVs will refresh.");
   }
 
   // ---------- event wiring ----------
@@ -1093,8 +1478,10 @@
       const ok = await confirmDialog("Load sample portfolio?", "This replaces your current data with the sample portfolio (matching the reference sheet). Export a backup first if needed.");
       if (!ok) return;
       const preservedTracker = state.dailyTracker;
+      const preservedWorkerUrl = state.priceWorkerUrl;
       state = seedData();
       if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
+      if (preservedWorkerUrl) state.priceWorkerUrl = preservedWorkerUrl;
       expanded = new Set();
       persist();
       renderAll();
@@ -1105,13 +1492,37 @@
       const ok = await confirmDialog("Reset all data?", "This permanently clears all asset classes, holdings and other assets. This cannot be undone.");
       if (!ok) return;
       const preservedTracker = state.dailyTracker;
+      const preservedWorkerUrl = state.priceWorkerUrl;
       state = emptyData();
       if (preservedTracker !== undefined) state.dailyTracker = preservedTracker;
+      if (preservedWorkerUrl) state.priceWorkerUrl = preservedWorkerUrl;
       expanded = new Set();
       persist();
       renderAll();
       toast("All data cleared.");
     });
+
+    // Live prices: toolbar + link modal + settings modal.
+    document.getElementById("btnRefreshPrices").addEventListener("click", refreshPrices);
+    document.getElementById("btnAutoLinkMf").addEventListener("click", autoLinkMfByIsin);
+    document.getElementById("btnPriceSettings").addEventListener("click", openPriceSettings);
+    document.getElementById("plSource").addEventListener("change", updatePriceLinkBlocks);
+    document.getElementById("plMfSearchBtn").addEventListener("click", searchMfSchemes);
+    document.getElementById("plMfSearch").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); searchMfSchemes(); }
+    });
+    document.getElementById("plMfResults").addEventListener("change", (e) => {
+      if (e.target.name === "plScheme" && pendingPriceLink) {
+        pendingPriceLink.chosenScheme = { code: e.target.value, name: e.target.dataset.name };
+        updatePriceLinkBlocks();
+      }
+    });
+    document.getElementById("plTestBtn").addEventListener("click", testStockSymbol);
+    document.getElementById("plCancel").addEventListener("click", () => document.getElementById("priceLinkBackdrop").classList.remove("show"));
+    document.getElementById("plSave").addEventListener("click", savePriceLink);
+    document.getElementById("psTestBtn").addEventListener("click", testWorkerConnection);
+    document.getElementById("psCancel").addEventListener("click", () => document.getElementById("priceSettingsBackdrop").classList.remove("show"));
+    document.getElementById("psSave").addEventListener("click", savePriceSettings);
 
     // Enter commits an edit the same way clicking away does — blur() triggers the existing
     // "change" handler below rather than duplicating its logic.
@@ -1138,6 +1549,10 @@
       if (actionEl) {
         const action = actionEl.dataset.action;
 
+        if (action === "link-price") {
+          openPriceLinkModal(actionEl.dataset.kind, actionEl.dataset.parent, actionEl.dataset.id);
+          return;
+        }
         if (action === "add-class") {
           const name = document.getElementById("newClassName").value.trim();
           const target = parseFloat(document.getElementById("newClassTarget").value) || 0;

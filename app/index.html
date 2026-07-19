@@ -31,6 +31,26 @@
   .cdsl-row select, .cdsl-row input.cdsl-newclass{border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;}
   .cdsl-empty{color:var(--muted);font-size:13px;padding:10px 4px;}
   .cdsl-unchanged{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;}
+
+  /* Page-specific: live-price linking (₹ button on holding rows + link/settings modals) */
+  .price-link-btn{font-weight:700;}
+  .price-link-btn.linked{color:var(--green);}
+  .price-modal{max-width:520px;}
+  .pl-row{display:flex;flex-direction:column;gap:4px;margin-top:12px;}
+  .pl-row label{font-size:12px;color:var(--muted);font-weight:600;}
+  .pl-row input,.pl-row select{border:1px solid var(--border);border-radius:8px;padding:8px 9px;font-size:13px;background:var(--card);color:var(--text);font-family:inherit;width:100%;box-sizing:border-box;}
+  .pl-inline{display:flex;gap:8px;align-items:center;}
+  .pl-inline input{flex:1;}
+  #plMfResults{max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;display:none;}
+  .pl-result{display:flex;align-items:center;gap:8px;padding:7px 9px;font-size:12px;border-bottom:1px solid var(--row-line);cursor:pointer;}
+  .pl-result:last-child{border-bottom:none;}
+  .pl-result:hover{background:var(--row-tint);}
+  .pl-result input{width:auto;}
+  .pl-chosen{font-size:12px;color:var(--green);margin-top:6px;font-weight:600;}
+  .pl-hint{font-size:11px;color:var(--muted);line-height:1.5;}
+  .pl-test-result{font-size:12px;}
+  .pl-test-result.ok{color:var(--green);}
+  .pl-test-result.err{color:var(--red);}
 </style>
 </head>
 <body>
@@ -68,8 +88,12 @@
         <div class="menu-divider"></div>
         <button class="menu-item" id="btnExportCsv">Export CSV</button>
         <button class="menu-item" id="btnExportXlsx">Export Excel</button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="btnAutoLinkMf">Auto-link MF Prices (by ISIN)</button>
+        <button class="menu-item" id="btnPriceSettings">Live Price Settings</button>
       </div>
     </div>
+    <button class="btn" id="btnRefreshPrices" title="Fetch latest NAVs/quotes for linked holdings and recalculate their values">↻ Refresh Prices</button>
     <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
     <input type="file" id="cdslFileInput" accept=".csv,.txt">
 
@@ -173,6 +197,71 @@
     <div class="modal-actions">
       <button class="btn" id="cdslCancel">Cancel</button>
       <button class="btn primary" id="cdslApply">Apply Selected</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="priceLinkBackdrop">
+  <div class="modal price-modal">
+    <h3>Link Live Price</h3>
+    <p class="pl-hint" style="margin:4px 0 0;">Holding: <strong id="plHoldingName"></strong></p>
+    <div class="pl-row">
+      <label>Price source</label>
+      <select id="plSource">
+        <option value="">None — value stays manual</option>
+        <option value="mf">Indian Mutual Fund (NAV via AMFI)</option>
+        <option value="stock">Stock / ETF (NSE · BSE · US, via your Worker)</option>
+      </select>
+    </div>
+    <div id="plMfBlock" style="display:none;">
+      <div class="pl-row">
+        <label>Find your scheme</label>
+        <div class="pl-inline">
+          <input id="plMfSearch" placeholder="Type scheme name, e.g. nippon index nifty direct">
+          <button class="btn" id="plMfSearchBtn">Search</button>
+        </div>
+        <div id="plMfResults"></div>
+        <div class="pl-chosen" id="plMfChosen"></div>
+      </div>
+    </div>
+    <div id="plStockBlock" style="display:none;">
+      <div class="pl-row">
+        <label>Ticker symbol</label>
+        <div class="pl-inline">
+          <input id="plStockSymbol" placeholder="e.g. RELIANCE.NS or AAPL">
+          <button class="btn" id="plTestBtn">Test</button>
+        </div>
+        <div class="pl-hint">NSE: add <strong>.NS</strong> (RELIANCE.NS) · BSE: add <strong>.BO</strong> (500325.BO) · US: plain ticker (AAPL). US prices are converted to ₹ automatically.</div>
+        <div class="pl-test-result" id="plTestResult"></div>
+      </div>
+    </div>
+    <div class="pl-row" id="plUnitsRow" style="display:none;">
+      <label>Units held</label>
+      <input type="number" id="plUnits" step="any" min="0" placeholder="e.g. 672.246">
+      <div class="pl-hint">Value = units × market price. Mutual fund units are filled automatically when you import a CDSL statement.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="plCancel">Cancel</button>
+      <button class="btn primary" id="plSave" style="color:#fff;">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="priceSettingsBackdrop">
+  <div class="modal price-modal">
+    <h3>Live Price Settings</h3>
+    <p class="pl-hint" style="margin:6px 0 0;">Mutual fund NAVs work with no setup. Stock/ETF quotes (NSE · BSE · US) need your own free Cloudflare Worker relay — a one-time 10-minute setup. See <strong>worker/README.md</strong> in the FinTrack repository for the steps.</p>
+    <div class="pl-row">
+      <label>Cloudflare Worker URL</label>
+      <div class="pl-inline">
+        <input id="psWorkerUrl" placeholder="https://my-price-proxy.example.workers.dev">
+        <button class="btn" id="psTestBtn">Test</button>
+      </div>
+      <div class="pl-test-result" id="psTestResult"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="psCancel">Cancel</button>
+      <button class="btn primary" id="psSave" style="color:#fff;">Save</button>
     </div>
   </div>
 </div>

@@ -14,7 +14,7 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 ## Portfolio Manager
 
-- **Toolbar**: one **Data ▾** dropdown holds all import/export actions — Import from CDSL, Import CSV/Excel, Download Template, and Load Sample Portfolio on top, with Export CSV / Export Excel below a divider; **Reset All Data** stays a standalone button since it's destructive and worth keeping one click away rather than tucked into a menu.
+- **Toolbar**: one **Data ▾** dropdown holds all import/export actions — Import from CDSL, Import CSV/Excel, Download Template, and Load Sample Portfolio on top, with Export CSV / Export Excel below a divider, and the live-price helpers (Auto-link MF Prices, Live Price Settings — see "Live prices" below) under a second divider; **↻ Refresh Prices** sits next to it as its own button since it's the one you'll press routinely; **Reset All Data** stays a standalone button since it's destructive and worth keeping one click away rather than tucked into a menu.
 - **Theme** (button in the header, top right): cycles Match system → Light → Dark. Follows your OS/browser preference by default; the manual choice is remembered on this device either way.
 - **Edit inline**: click any Target %, current value, or SIP % cell to edit. Totals, deviation, correction and net worth recalculate immediately.
 - **Add/remove** asset classes and holdings in Asset Allocation, or items/subsections in Other Assets, using the + rows and ✕ buttons.
@@ -34,13 +34,14 @@ Your data is saved automatically in the browser's local storage on the machine y
 
 ## Import/Export file format
 
-A flat table with columns: `Section, Name, Parent, CurrentValue, TargetPct, SIPPct, MonthlyContribution, ISIN, ManualSipPct`
+A flat table with columns: `Section, Name, Parent, CurrentValue, TargetPct, SIPPct, MonthlyContribution, ISIN, ManualSipPct, Units, PriceSource, Symbol, SymbolName`
 
-- `Meta` rows set `MonthlyInvestment`, `Updated` date, and `SipMode` (`target` / `deviation` / `manual`).
+- `Meta` rows set `MonthlyInvestment`, `Updated` date, `SipMode` (`target` / `deviation` / `manual`), and `PriceWorkerUrl` (the live-price Worker URL, if configured).
 - `AssetClass` rows define a class name, its `TargetPct` (should sum to 100 across classes), and `ManualSipPct` (only used when `SipMode` is `manual`; should also sum to 100 across classes).
 - `Holding` rows define a fund/stock under a class (`Parent` must match an AssetClass name), its `CurrentValue`, `SIPPct` (share of that class's monthly SIP; should sum to 100 within each class), and optionally `ISIN` (used for exact matching on CDSL sync).
 - `Other` rows define a simple net-worth item outside the 4-class allocation (Chit, NPS, Gold, etc.) with `CurrentValue` and `MonthlyContribution`.
 - `OtherGroup` rows define an Other Assets subsection (e.g. "Bonds") and its `MonthlyContribution`; `OtherHolding` rows are its line items (`Parent` must match an OtherGroup name), with `CurrentValue` and optionally `ISIN`.
+- `Units, PriceSource, Symbol, SymbolName` (on `Holding`/`OtherHolding` rows) carry a holding's live-price link (see "Live prices" below); all optional — older exports without these columns import fine, the holdings simply stay manual.
 
 ## Syncing from a CDSL statement
 
@@ -55,6 +56,19 @@ Click **Import from CDSL** (in the **Data ▾** menu) and pick the CSV. The app:
 5. Only applies what's checked when you click **Apply Selected**. Your target %, SIP %, and simple Other Assets items (Chit, NPS, Gold — none of which live in a demat account) are never touched by this.
 
 Name matching is heuristic — always check the review screen before applying, especially the first time before ISINs are recorded.
+
+Besides values and ISINs, the sync also records each holding's **unit count** (shares / MF units) from the statement — that's what feeds the live-price refresh below, so an import + auto-link is all the setup a mutual fund needs.
+
+## Live prices
+
+Refresh the market value of linked holdings with one click: **↻ Refresh Prices** fetches the latest price for every linked holding and sets its current value to `units × price` (converted to ₹ for US stocks). Nothing fetches automatically or in the background — prices only move when you press the button, and the last fetched price/time is kept with your data (hover a green ₹ button to see it), so the app stays fully offline-first.
+
+Two kinds of sources, with very different setup needs:
+
+- **Indian mutual funds** — zero setup. NAVs come from [api.mfapi.in](https://api.mfapi.in) (AMFI data, published daily in the evening; keyless and browser-friendly). The fastest path: **Import from CDSL** (records ISINs + units), then **Data ▾ → Auto-link MF Prices (by ISIN)** — every fund the AMFI list knows is linked in one shot, no typing.
+- **Stocks & ETFs (NSE / BSE / US)** — one-time ~10-minute setup. Quotes come from Yahoo Finance, which blocks direct browser requests, so they're relayed through your own free Cloudflare Worker: follow [`worker/README.md`](../worker/README.md) in the repository, then paste the Worker URL into **Data ▾ → Live Price Settings** (it saves with your data and syncs across devices). US quotes are converted to ₹ using the live USD/INR rate fetched in the same batch.
+
+To link (or unlink) any single holding, click the **₹** button on its row: pick the source, search your MF scheme by name (or type a ticker — `RELIANCE.NS`, `500325.BO`, `AAPL` — with a **Test** button to verify it), and enter your units. Units come free from CDSL for demat/MF holdings; US stocks held abroad (e.g. via INDmoney) aren't in a CDSL statement, so type their units once — they only change when you trade. Linked values remain editable by hand between refreshes; a refresh simply overwrites them with `units × price` again. Quotes are 15-minute delayed (normal for free sources); MF NAVs are once-a-day by nature.
 
 ## Ledger
 
