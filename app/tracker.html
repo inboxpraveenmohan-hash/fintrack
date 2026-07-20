@@ -95,8 +95,11 @@
   #budgetCards{display:none;}
   #accountsCards{display:none;}
 
-  /* ---------- Day group headers + chunking button (live inside .txn-cards, mobile-only) ---------- */
-  .day-head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 4px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
+  /* ---------- Day group headers + chunking button (live inside .txn-cards, mobile-only) ----------
+     Padding matches .txn-card's 10px top/bottom exactly, so the gap above a day's first card and
+     the gap between two ordinary cards come out the same — before this, the header's old 12px/4px
+     split made its own gap 14px against the cards' ~21px, which read as cramped under every date. */
+  .day-head{display:flex;justify-content:space-between;align-items:baseline;padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
   .day-head b{font-variant-numeric:tabular-nums;letter-spacing:0;font-size:12px;}
   .day-head b.net-out{color:var(--red);}
   .day-head b.net-in{color:var(--green);}
