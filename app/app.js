@@ -288,7 +288,7 @@
 
     const otherItemCount = state.otherAssets.reduce((s, o) => s + (Array.isArray(o.holdings) ? o.holdings.length : 1), 0);
     document.getElementById("statCards").innerHTML = [
-      card("Net Worth", fmtINR(d.netWorth), '<span class="hint">Updated ' + escapeHtml(fmtDate(state.updated)) + "</span>"),
+      card("Net Worth", fmtINR(d.netWorth)),
       card("Total Investments", fmtINR(d.totalAssets), '<span class="hint">Across ' + state.assetClasses.length + " asset classes</span>"),
       card("Other Assets", fmtINR(d.otherTotal), '<span class="hint">' + otherItemCount + " items (bonds, chit, NPS, gold…)</span>"),
       card("Monthly SIP / Investment", fmtINR(d.monthlyInvestment), offMsg)
