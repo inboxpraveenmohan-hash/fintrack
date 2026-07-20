@@ -147,7 +147,13 @@
        against the right edge regardless of how long the title or hint text is — a plain flex
        row would only push it as far as the text itself reaches, not the full card width. */
     .msec-head{display:grid;grid-template-columns:1fr auto auto;align-items:center;column-gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-    h2[data-mcollapse]{display:grid;grid-template-columns:1fr auto auto;align-items:center;column-gap:8px;}
+    /* flex:1 1 100% is required, not cosmetic: h2 is a flex ITEM inside .section-head (a flex
+       row), so without it the h2 sizes to its own content width like any flex item — meaning
+       the grid above would sit flush-right within a box that itself stops short of the card's
+       edge, exactly the "arrow not at the rightmost" symptom. Forcing the h2 to claim the full
+       row also pushes any sibling (e.g. Accounts' "Copy Previous Month's Balances" button) onto
+       its own line, which is already how it renders today. */
+    h2[data-mcollapse]{display:grid;grid-template-columns:1fr auto auto;align-items:center;column-gap:8px;flex:1 1 100%;}
     .msec-title{min-width:0;}
     .msec-toggle{display:inline-block;color:var(--muted);font-size:12px;transition:transform .15s;justify-self:end;}
     .msec-hint{display:inline-block;font-weight:600;font-size:11px;color:var(--muted);white-space:nowrap;}
@@ -176,6 +182,11 @@
     #btnClearMonth{display:none;}
     .log-more{display:block;}
     #logMoreMenu{right:0;left:auto;}
+    /* .section has overflow:hidden (shared.css, for the desktop table's rounded-corner
+       clipping) — but ANY ancestor with overflow other than visible breaks position:sticky for
+       everything inside it, which silently neutered the day headers below. The desktop table is
+       display:none on mobile anyway, so nothing was actually relying on the clipping here. */
+    #secTxnLog{overflow:visible;}
     /* Day headers stick just under the month bar while their day's cards scroll */
     .day-head{position:sticky;top:52px;z-index:20;background:var(--bg);}
     .fab{display:block;position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));width:54px;height:54px;border-radius:50%;background:var(--primary);color:#fff;font-size:28px;border:none;box-shadow:0 4px 14px rgba(0,0,0,.35);z-index:40;line-height:1;cursor:pointer;}
@@ -311,7 +322,7 @@
     <div id="accountsCards"></div>
   </div>
 
-  <div class="section">
+  <div class="section" id="secTxnLog">
     <div class="section-head">
       <h2>Transaction Log</h2>
       <div id="txnControls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
