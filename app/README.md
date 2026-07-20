@@ -31,6 +31,7 @@ Your data is saved automatically in the browser's local storage on the machine y
 - **Load Sample Portfolio** (in the **Data ▾** menu): resets to the example data matching the original reference sheet.
 - **Reset All Data**: clears everything.
 - **Import from CDSL** (in the **Data ▾** menu): refreshes current values from a CDSL "Transaction cum Holding" statement (see below).
+- **Mobile layout**: below 720px wide, both the Asset Allocation and Other Assets tables switch to tap-to-expand cards instead of a horizontally-scrolling table — swatch, name, and target %→current % on the collapsed card; tap it to reveal Target Amount, Current Value, Deviation, Correction, Monthly SIP, and its holdings (each directly editable, same as desktop). An Other Assets subsection (e.g. "Bonds") gets the identical expandable-card treatment; simple items (Chit, NPS, …) stay a single compact row. Cards and the desktop table share the same expand/collapse state, so switching window width mid-session doesn't reset what's open. "+ Add Asset Class" / "+ Add Other Asset" / "+ Add Subsection" become labeled cards at the bottom of each section instead of scrolling input rows, and the Net Worth Composition donut's legend moves below the chart so the chart itself keeps the full width.
 
 ## Import/Export file format
 

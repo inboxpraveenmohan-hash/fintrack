@@ -114,6 +114,14 @@
   let chartAllocation = null;
   let chartNetWorth = null;
 
+  // Same breakpoint as the CSS media query. Falls back to a static non-matching stub where
+  // matchMedia isn't available (jsdom's test environment, and conceivably an odd WebView) —
+  // mobile-only JS behavior (donut legend position) simply stays desktop-like there, while the
+  // CSS media query itself still switches normally in any real browser.
+  const MOBILE_MQ = typeof window.matchMedia === "function"
+    ? window.matchMedia("(max-width:720px)")
+    : { matches: false, addEventListener: null };
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -334,6 +342,67 @@
     } else {
       sipBadge.style.display = "none";
     }
+
+    renderAllocationCards(d);
+  }
+
+  // Mobile card rendering of the same asset classes — hidden on desktop (and vice versa) purely
+  // via CSS, so both are always in the DOM. Reuses the identical data-type/data-id/data-field
+  // convention on every input, so the existing delegated "change" handler serves both
+  // representations, and reuses the SAME `expanded` Set + data-toggle convention as the desktop
+  // table (put on .ac-head only, never the outer .ac-card, so a click inside the expanded body —
+  // e.g. focusing a holding's value input — doesn't also collapse the card).
+  function renderAllocationCards(d) {
+    const cardsHtml = state.assetClasses.map((ac, acIdx) => {
+      const isOpen = expanded.has(ac.id);
+      const devClass = ac.deviation > DEVIATION_THRESHOLD ? "pos" : ac.deviation < -DEVIATION_THRESHOLD ? "neg" : "neu";
+      const color = PALETTE[acIdx % PALETTE.length];
+      let body = "";
+      if (isOpen) {
+        const sipPctSum = ac.holdings.reduce((s, h) => s + (Number(h.sipPct) || 0), 0);
+        const holdingsHtml = ac.holdings.map((h) =>
+          '<div class="hrow-m">' +
+            '<div class="hrow-top"><input class="cell-input name-input" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="name" value="' + escapeAttr(h.name) + '">' +
+              priceLinkBtn(h, ac.id, "class") +
+              '<button class="icon-btn" data-action="delete-holding" data-id="' + h.id + '" data-parent="' + ac.id + '" title="Delete holding">✕</button></div>' +
+            '<div class="hrow-bottom"><input class="cell-input amount" type="number" step="0.01" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '">' +
+              '<span class="sipwrap"><input class="cell-input small" type="number" step="1" data-type="holding" data-id="' + h.id + '" data-parent="' + ac.id + '" data-field="sipPct" value="' + numOr0(h.sipPct) + '"> % → ' + fmtINR(h.sipAmount) + "</span></div>" +
+          "</div>"
+        ).join("");
+        const sipCell = d.sipMode === "manual"
+          ? '<input class="cell-input small" type="number" step="0.1" data-type="class" data-id="' + ac.id + '" data-field="manualSipPct" value="' + numOr0(ac.manualSipPct) + '"> % → ' + fmtINR(ac.sipAmount)
+          : fmtPct(ac.sipAllocPct) + " → " + fmtINR(ac.sipAmount);
+        body = '<div class="ac-body">' +
+          '<div class="ac-meta"><span>Target %</span><input class="cell-input small" type="number" step="0.1" data-type="class" data-id="' + ac.id + '" data-field="targetPct" value="' + numOr0(ac.targetPct) + '"></div>' +
+          '<div class="ac-meta"><span>Target Amount</span><b>' + fmtINR(ac.targetAmount) + "</b></div>" +
+          '<div class="ac-meta"><span>Current Value</span><b>' + fmtINR(ac.currentValue) + "</b></div>" +
+          '<div class="ac-meta"><span>Deviation</span><b class="' + devClass + '">' + fmtSigned(ac.deviation, "%") + "</b></div>" +
+          '<div class="ac-meta"><span>Correction</span><b class="' + (ac.correction > 0 ? "pos" : ac.correction < 0 ? "neg" : "") + '">' + fmtSigned(ac.correction) + "</b></div>" +
+          '<div class="ac-meta"><span>Monthly SIP</span><b>' + sipCell + "</b></div>" +
+          '<div class="ac-actions"><button class="btn" style="padding:5px 9px;font-size:11px;" data-action="refresh-class-prices" data-id="' + ac.id + '">↻ Refresh</button>' +
+            '<button class="btn" style="padding:5px 9px;font-size:11px;" data-action="move-class-to-other" data-id="' + ac.id + '">⇄ Move</button>' +
+            '<button class="btn danger" style="padding:5px 9px;font-size:11px;" data-action="delete-class" data-id="' + ac.id + '">✕ Delete</button></div>' +
+          holdingsHtml +
+          '<div class="ac-add-inline">' +
+            '<div class="inline-row"><input class="cell-input name-input" placeholder="New holding name" id="newHoldingName_' + ac.id + '_m"><input class="cell-input amount" type="number" placeholder="Value" id="newHoldingValue_' + ac.id + '_m" style="width:90px;"></div>' +
+            '<div class="inline-row"><input class="cell-input small" type="number" placeholder="SIP %" id="newHoldingSip_' + ac.id + '_m" style="width:70px;"><button class="btn primary" style="color:#fff;flex:1;" data-action="add-holding" data-parent="' + ac.id + '">+ Add Holding</button></div>' +
+            '<span class="hint ' + (Math.abs(sipPctSum - 100) < 0.01 || ac.holdings.length === 0 ? "" : "warn") + '" style="font-size:11px;color:var(--muted);">SIP % total: ' + sipPctSum.toFixed(0) + "%</span>" +
+          "</div>" +
+        "</div>";
+      }
+      return '<div class="ac-card">' +
+        '<div class="ac-head" data-toggle="' + ac.id + '"><span class="chevron' + (isOpen ? " open" : "") + '">▶</span>' +
+          '<span class="swatch" style="background:' + color + '"></span>' +
+          '<input class="cell-input name-input" data-type="class" data-id="' + ac.id + '" data-field="name" value="' + escapeAttr(ac.name) + '" onclick="event.stopPropagation()">' +
+          '<span class="ac-pct">' + numOr0(ac.targetPct) + "% → " + fmtPct(ac.currentPct) + "</span></div>" +
+        body +
+      "</div>";
+    }).join("");
+    const emptyMsg = '<div class="empty-msg">No asset classes yet. Add one below, or import a CSV/Excel file.</div>';
+    document.getElementById("acCards").innerHTML = (cardsHtml || emptyMsg) +
+      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Asset Class Name</label><input id="newClassNameM" placeholder="e.g. REITs"></div>' +
+      '<div class="pl-row"><label>Target %</label><input type="number" id="newClassTargetM" placeholder="0"></div>' +
+      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-class">+ Add Asset Class</button></div>';
   }
 
   function renderOtherTable(d) {
@@ -411,6 +480,65 @@
     );
 
     document.getElementById("otherBody").innerHTML = rows.join("");
+
+    renderOtherCards();
+  }
+
+  // Mobile card rendering of Other Assets — same dual-representation pattern as
+  // renderAllocationCards(). Simple items (no holdings array) render as one compact row each;
+  // subsections (e.g. "Bonds") get the identical expandable-card treatment as an asset class.
+  function renderOtherCards() {
+    let html = "";
+    state.otherAssets.forEach((o) => {
+      const isGroup = Array.isArray(o.holdings);
+      if (!isGroup) {
+        html += '<div class="oa-simple-card">' +
+          '<input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '">' +
+          '<input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '">' +
+          '<button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
+          '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button>' +
+        "</div>";
+        return;
+      }
+      const isOpen = expanded.has(o.id);
+      let body = "";
+      if (isOpen) {
+        const holdingsHtml = o.holdings.map((h) =>
+          '<div class="hrow-m">' +
+            '<div class="hrow-top"><input class="cell-input name-input" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="name" value="' + escapeAttr(h.name) + '">' +
+              priceLinkBtn(h, o.id, "other") +
+              '<button class="icon-btn" data-action="delete-other-holding" data-id="' + h.id + '" data-parent="' + o.id + '" title="Delete item">✕</button></div>' +
+            '<div class="hrow-bottom"><input class="cell-input amount" type="number" data-type="otherHolding" data-id="' + h.id + '" data-parent="' + o.id + '" data-field="currentValue" value="' + numOr0(h.currentValue) + '"></div>' +
+          "</div>"
+        ).join("");
+        body = '<div class="ac-body">' +
+          '<div class="ac-meta"><span>Current Value</span><b>' + fmtINR(o.currentValue) + "</b></div>" +
+          '<div class="ac-meta"><span>Monthly Contribution</span><input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '"></div>' +
+          '<div class="ac-actions"><button class="btn" style="padding:5px 9px;font-size:11px;" data-action="refresh-other-prices" data-id="' + o.id + '">↻ Refresh</button>' +
+            '<button class="btn" style="padding:5px 9px;font-size:11px;" data-action="move-other-to-class" data-id="' + o.id + '">⇄ Move</button>' +
+            '<button class="btn danger" style="padding:5px 9px;font-size:11px;" data-action="delete-other" data-id="' + o.id + '">✕ Delete</button></div>' +
+          holdingsHtml +
+          '<div class="ac-add-inline">' +
+            '<div class="inline-row"><input class="cell-input name-input" placeholder="New item name" id="newOtherHoldingName_' + o.id + '_m"><input class="cell-input amount" type="number" placeholder="Value" id="newOtherHoldingValue_' + o.id + '_m" style="width:90px;"></div>' +
+            '<button class="btn primary" style="color:#fff;" data-action="add-other-holding" data-parent="' + o.id + '">+ Add Item</button>' +
+          "</div>" +
+        "</div>";
+      }
+      html += '<div class="ac-card">' +
+        '<div class="ac-head" data-toggle="' + o.id + '"><span class="chevron' + (isOpen ? " open" : "") + '">▶</span>' +
+          '<input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '" onclick="event.stopPropagation()">' +
+          '<span class="ac-pct">' + fmtINR(o.currentValue) + "</span></div>" +
+        body +
+      "</div>";
+    });
+    const emptyMsg = '<div class="empty-msg">No other assets yet.</div>';
+    document.getElementById("otherCards").innerHTML = (html || emptyMsg) +
+      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Item Name</label><input id="newOtherNameM" placeholder="e.g. NPS"></div>' +
+      '<div class="pl-row"><label>Value</label><input type="number" id="newOtherValueM" placeholder="0"></div>' +
+      '<div class="pl-row"><label>Monthly Contribution</label><input type="number" id="newOtherMonthlyM" placeholder="0"></div>' +
+      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-other">+ Add Other Asset</button></div>' +
+      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Subsection Name</label><input id="newOtherGroupNameM" placeholder="e.g. Bonds"></div>' +
+      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-other-group">+ Add Subsection</button></div>';
   }
 
   function renderCharts(d) {
@@ -463,7 +591,10 @@
       data: { labels: nwLabels, datasets: [{ data: nwData, backgroundColor: nwColors, borderWidth: 2, borderColor: cardBg }] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
+        // Phones: legend below so the donut gets the full width instead of fighting a tall
+        // side stack of labels. renderAll() re-runs on breakpoint change (see init) so this
+        // flips live if the window crosses the breakpoint.
+        plugins: { legend: { position: MOBILE_MQ.matches ? "bottom" : "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
       }
     });
   }
@@ -1424,6 +1555,13 @@
       toast("Moved \"Bonds\" out of Asset Allocation into Other Assets — it no longer affects target %/deviation.");
     }
 
+    // Net Worth donut's legend position depends on MOBILE_MQ (right on desktop, bottom on
+    // phones) — re-render on breakpoint change so it flips live, mirroring tracker.js's
+    // identical wiring for its own MOBILE_MQ-dependent behaviors.
+    if (MOBILE_MQ.addEventListener) {
+      MOBILE_MQ.addEventListener("change", () => renderAll());
+    }
+
     // Toolbar dropdown menus (Import / Export): toggle on the button, close on any other click —
     // including a click on one of the menu's own items, so picking an action closes the menu
     // too, since that click bubbles to this same document-level listener after the item's own
@@ -1572,8 +1710,13 @@
           return;
         }
         if (action === "add-class") {
-          const name = document.getElementById("newClassName").value.trim();
-          const target = parseFloat(document.getElementById("newClassTarget").value) || 0;
+          // Two add-row copies exist (desktop table row + mobile add-card) — only one is
+          // visible at a time, so distinct ids avoid getElementById silently returning the
+          // hidden desktop one; pick the right pair via the same MOBILE_MQ flag used elsewhere.
+          const nameEl = document.getElementById(MOBILE_MQ.matches ? "newClassNameM" : "newClassName");
+          const targetEl = document.getElementById(MOBILE_MQ.matches ? "newClassTargetM" : "newClassTarget");
+          const name = nameEl.value.trim();
+          const target = parseFloat(targetEl.value) || 0;
           if (!name) { toast("Enter a name for the new asset class."); return; }
           const ac = { id: uid("ac"), name, targetPct: target, manualSipPct: target, holdings: [] };
           state.assetClasses.push(ac);
@@ -1583,9 +1726,10 @@
         }
         if (action === "add-holding") {
           const parent = actionEl.dataset.parent;
-          const nameEl = document.getElementById("newHoldingName_" + parent);
-          const valueEl = document.getElementById("newHoldingValue_" + parent);
-          const sipEl = document.getElementById("newHoldingSip_" + parent);
+          const suffix = MOBILE_MQ.matches ? "_m" : "";
+          const nameEl = document.getElementById("newHoldingName_" + parent + suffix);
+          const valueEl = document.getElementById("newHoldingValue_" + parent + suffix);
+          const sipEl = document.getElementById("newHoldingSip_" + parent + suffix);
           const name = nameEl.value.trim();
           if (!name) { toast("Enter a name for the new holding."); return; }
           const ac = findClass(parent);
@@ -1594,16 +1738,17 @@
           return;
         }
         if (action === "add-other") {
-          const name = document.getElementById("newOtherName").value.trim();
-          const value = parseFloat(document.getElementById("newOtherValue").value) || 0;
-          const monthly = parseFloat(document.getElementById("newOtherMonthly").value) || 0;
+          const m = MOBILE_MQ.matches;
+          const name = document.getElementById(m ? "newOtherNameM" : "newOtherName").value.trim();
+          const value = parseFloat(document.getElementById(m ? "newOtherValueM" : "newOtherValue").value) || 0;
+          const monthly = parseFloat(document.getElementById(m ? "newOtherMonthlyM" : "newOtherMonthly").value) || 0;
           if (!name) { toast("Enter a name for the new item."); return; }
           state.otherAssets.push({ id: uid("o"), name, currentValue: value, monthlyContribution: monthly });
           persist(); renderAll();
           return;
         }
         if (action === "add-other-group") {
-          const name = document.getElementById("newOtherGroupName").value.trim();
+          const name = document.getElementById(MOBILE_MQ.matches ? "newOtherGroupNameM" : "newOtherGroupName").value.trim();
           if (!name) { toast("Enter a name for the new subsection."); return; }
           const og = { id: uid("o"), name, monthlyContribution: 0, holdings: [] };
           state.otherAssets.push(og);
@@ -1613,8 +1758,9 @@
         }
         if (action === "add-other-holding") {
           const parent = actionEl.dataset.parent;
-          const nameEl = document.getElementById("newOtherHoldingName_" + parent);
-          const valueEl = document.getElementById("newOtherHoldingValue_" + parent);
+          const suffix = MOBILE_MQ.matches ? "_m" : "";
+          const nameEl = document.getElementById("newOtherHoldingName_" + parent + suffix);
+          const valueEl = document.getElementById("newOtherHoldingValue_" + parent + suffix);
           const name = nameEl.value.trim();
           if (!name) { toast("Enter a name for the new item."); return; }
           const og = findOther(parent);
@@ -1737,6 +1883,7 @@
     confirmDialog,
     allGroupIds,
     getExpanded: () => expanded,
-    setExpanded: (s) => { expanded = s; }
+    setExpanded: (s) => { expanded = s; },
+    isMobile: () => MOBILE_MQ.matches
   };
 })();
