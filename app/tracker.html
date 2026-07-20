@@ -81,11 +81,14 @@
   .cal-btn{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:5px;border-radius:6px;line-height:0;}
   .cal-btn:hover{color:var(--primary);background:var(--row-tint);}
   #txnFilterCategoryM{display:none;}
+  /* .msec-title gets NO desktop rule — it's a plain inline span there, identical to unwrapped
+     text; it only becomes a grid cell under the mobile query below. */
   .msec-head{display:none;}
   .msec-toggle{display:none;}
   .msec-hint{display:none;}
   .log-more{display:none;}
   #budgetCards{display:none;}
+  #accountsCards{display:none;}
 
   /* ---------- Day group headers + chunking button (live inside .txn-cards, mobile-only) ---------- */
   .day-head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 4px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
@@ -111,6 +114,20 @@
   .brow-m .brow-actual{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;}
   .brow-m input.cell-input{width:76px;border-color:var(--border);}
 
+  /* ---------- Account cards (mobile replacement for the accounts table) ---------- */
+  .acct-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:9px;}
+  .acct-card:last-child{margin-bottom:0;}
+  .acct-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .acct-top .cell-input.name-input{font-size:14px;font-weight:700;padding:2px 4px;width:auto;flex:1;min-width:0;}
+  .acct-top .icon-btn{flex-shrink:0;}
+  .acct-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px;}
+  .acct-fields .field label{font-size:9.5px;}
+  .acct-fields .field input.cell-input{width:100%;text-align:left;border-color:var(--border);}
+  .acct-closing-value{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;padding:8px 9px;}
+  .acct-add-card{background:var(--row-tint);border:1px dashed var(--border);border-radius:11px;padding:11px 13px;}
+  .acct-add-card .field input{width:100%;}
+  .acct-add-card .btn{width:100%;margin-top:10px;}
+
   /* ---------- Mobile layout (≤720px) — switches automatically, desktop above is untouched ---------- */
   @media (max-width:720px){
     .wrap{padding:12px 12px 90px;}
@@ -125,10 +142,15 @@
     /* Month bar relocates into #monthBarSlot (via JS) and sticks to the top while scrolling */
     #monthBarSlot{position:sticky;top:0;z-index:44;background:var(--bg);padding:4px 0 6px;}
     #monthBarSlot .month-switch{margin:0;}
-    /* Collapsible review sections: tap the header (or its ▾) to fold — desktop ignores all of this */
-    .msec-head{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-    .msec-toggle{display:inline-block;color:var(--muted);font-size:12px;transition:transform .15s;margin-left:6px;}
-    .msec-hint{display:inline;font-weight:600;font-size:11px;color:var(--muted);margin-left:auto;padding-left:8px;}
+    /* Collapsible review sections: tap the header (or its ▾) to fold — desktop ignores all of this.
+       The header is a 3-column grid (title / hint / chevron) so the chevron always sits flush
+       against the right edge regardless of how long the title or hint text is — a plain flex
+       row would only push it as far as the text itself reaches, not the full card width. */
+    .msec-head{display:grid;grid-template-columns:1fr auto auto;align-items:center;column-gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    h2[data-mcollapse]{display:grid;grid-template-columns:1fr auto auto;align-items:center;column-gap:8px;}
+    .msec-title{min-width:0;}
+    .msec-toggle{display:inline-block;color:var(--muted);font-size:12px;transition:transform .15s;justify-self:end;}
+    .msec-hint{display:inline-block;font-weight:600;font-size:11px;color:var(--muted);white-space:nowrap;}
     [data-mcollapse]{cursor:pointer;-webkit-tap-highlight-color:transparent;}
     .mcollapsed .msec-toggle{transform:rotate(-90deg);}
     #chartsSection.mcollapsed .charts{display:none;}
@@ -138,14 +160,10 @@
     /* Budget vs Actual: the table gives way to tap-to-expand group cards */
     #secBudget .table-scroll{display:none;}
     #budgetCards{display:block;}
-    /* Accounts: name + closing on top, opening input labeled underneath */
-    #accountsTable thead{display:none;}
-    #accountsTable tr{display:grid;grid-template-columns:1fr auto auto;gap:1px 8px;padding:7px 12px;border-bottom:1px solid var(--row-line);align-items:center;}
-    #accountsTable td{display:block;border:none;padding:0;text-align:left;white-space:normal;}
-    #accountsTable td:nth-child(2){grid-column:2;text-align:right;}
-    #accountsTable td:nth-child(2) .cell-input{width:88px;border-color:var(--border);}
-    #accountsTable td:nth-child(3){grid-column:3;text-align:right;font-weight:600;}
-    #accountsTable td:nth-child(4){grid-column:3;grid-row:2;text-align:right;}
+    /* Accounts: table gives way to labeled cards (name + delete on top, opening/closing
+       balance fields below, each clearly labeled — see .acct-card rules above) */
+    #accountsTable{display:none;}
+    #accountsCards{display:block;}
     /* Transaction Log: table swaps out for cards; header add-button gives way to the FAB */
     #txnTable{display:none;}
     .txn-cards{display:block;}
@@ -233,7 +251,7 @@
   <div class="stats" id="statCards"></div>
 
   <div id="chartsSection">
-    <div class="msec-head" data-mcollapse="chartsSection"><span>Spending Charts</span><span class="msec-toggle">▾</span></div>
+    <div class="msec-head" data-mcollapse="chartsSection"><span class="msec-title">Spending Charts</span><span class="msec-toggle">▾</span></div>
     <div class="charts">
     <div class="chart-card">
       <div class="chart-card-head">
@@ -254,7 +272,7 @@
 
   <div class="section" id="secBudget">
     <div class="section-head">
-      <h2 data-mcollapse="secBudget">Budget vs Actual <span style="font-weight:400;color:var(--muted);font-size:12px;">(recurring monthly budgets, per category)</span> <span class="msec-hint" id="budgetHint"></span><span class="msec-toggle">▾</span></h2>
+      <h2 data-mcollapse="secBudget"><span class="msec-title">Budget vs Actual <span style="font-weight:400;color:var(--muted);font-size:12px;">(recurring monthly budgets, per category)</span></span><span class="msec-hint" id="budgetHint"></span><span class="msec-toggle">▾</span></h2>
     </div>
     <div class="table-scroll">
       <table id="budgetTable">
@@ -274,7 +292,7 @@
 
   <div class="section" id="secAccounts">
     <div class="section-head">
-      <h2 data-mcollapse="secAccounts">Accounts <span style="font-weight:400;color:var(--muted);font-size:12px;">— <span id="accountsMonthLabel"></span></span> <span class="msec-hint" id="acctHint"></span><span class="msec-toggle">▾</span></h2>
+      <h2 data-mcollapse="secAccounts"><span class="msec-title">Accounts <span style="font-weight:400;color:var(--muted);font-size:12px;">— <span id="accountsMonthLabel"></span></span></span><span class="msec-hint" id="acctHint"></span><span class="msec-toggle">▾</span></h2>
       <button class="btn" id="btnCarryForward" data-action="copy-previous-balances" title="Set each account's opening balance for this month to its closing balance from last month">Copy Previous Month's Balances</button>
     </div>
     <div class="table-scroll">
@@ -290,6 +308,7 @@
         <tbody id="accountsBody"></tbody>
       </table>
     </div>
+    <div id="accountsCards"></div>
   </div>
 
   <div class="section">
