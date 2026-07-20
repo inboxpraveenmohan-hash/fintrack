@@ -122,6 +122,59 @@
     ? window.matchMedia("(max-width:720px)")
     : { matches: false, addEventListener: null };
 
+  // ---------- Add to Portfolio modal (single FAB + modal, both layouts, replacing what used
+  // to be five separate add-rows/add-cards scattered across the two sections) ----------
+  let currentAddType = "holding";
+  // Remembered across modal opens so the "Into" picker defaults to wherever you were last
+  // adding things, rather than always falling back to the first item in the list.
+  let lastClassId = null;
+  let lastGroupId = null;
+
+  function openAddModal() {
+    selectAddType("holding");
+    document.getElementById("addBackdrop").classList.add("show");
+  }
+
+  function selectAddType(type) {
+    currentAddType = type;
+    document.querySelectorAll("#addTypePills .type-pill").forEach((p) => p.classList.toggle("active", p.dataset.addType === type));
+    document.querySelectorAll(".add-type-fields").forEach((f) => f.classList.toggle("active", f.dataset.addType === type));
+    const intoRow = document.getElementById("addIntoRow");
+    if (type === "holding" || type === "groupitem") {
+      intoRow.style.display = "flex";
+      populateAddIntoSelect(type);
+    } else {
+      intoRow.style.display = "none";
+      document.getElementById("addNewParentRow").style.display = "none";
+    }
+  }
+
+  function populateAddIntoSelect(type) {
+    const isHolding = type === "holding";
+    const list = isHolding ? state.assetClasses : state.otherAssets.filter((o) => Array.isArray(o.holdings));
+    const sel = document.getElementById("addIntoSelect");
+    sel.innerHTML = list.map((x) => '<option value="' + x.id + '">' + escapeAttr(x.name) + "</option>").join("") +
+      '<option value="__new__">+ Create new…</option>';
+    const preferredId = isHolding ? lastClassId : lastGroupId;
+    const expandedFirst = list.find((x) => expanded.has(x.id));
+    let defaultId = "__new__";
+    if (preferredId && list.some((x) => x.id === preferredId)) defaultId = preferredId;
+    else if (expandedFirst) defaultId = expandedFirst.id;
+    else if (list.length > 0) defaultId = list[0].id;
+    sel.value = defaultId;
+    document.getElementById("addIntoLabel").textContent = isHolding ? "Into Asset Class" : "Into Group";
+    document.getElementById("addNewParentLabel").textContent = isHolding ? "New Class Name" : "New Group Name";
+    document.getElementById("addNewParentRow").style.display = defaultId === "__new__" ? "block" : "none";
+  }
+
+  function clearAddModalFields() {
+    ["addHoldingName", "addHoldingValue", "addHoldingSip", "addClassName", "addClassTarget",
+      "addOtherName", "addOtherValue", "addOtherMonthly", "addGroupName",
+      "addGroupItemName", "addGroupItemValue", "addNewParentName"].forEach((id) => {
+      document.getElementById(id).value = "";
+    });
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -293,33 +346,19 @@
             "</tr>"
           );
         });
-        rows.push(
-          '<tr class="add-row"><td colspan="9">' +
-            '<div class="name-cell" style="gap:8px;padding-left:22px;">' +
-              '<input class="cell-input name-input" placeholder="New holding name" id="newHoldingName_' + ac.id + '">' +
-              '<input class="cell-input amount" type="number" placeholder="Value" id="newHoldingValue_' + ac.id + '">' +
-              '<input class="cell-input small" type="number" placeholder="SIP %" id="newHoldingSip_' + ac.id + '">' +
-              '<button class="btn" data-action="add-holding" data-parent="' + ac.id + '">+ Add Holding</button>' +
-              '<span class="hint ' + (Math.abs(sipPctSum - 100) < 0.01 || ac.holdings.length === 0 ? "" : "warn") + '" style="font-size:11px;color:var(--muted);margin-left:auto;">SIP % total: ' + sipPctSum.toFixed(0) + "%</span>" +
-            "</div>" +
-          "</td></tr>"
-        );
+        // SIP % total hint still needs somewhere to live now that the add-holding row (which
+        // used to carry it) is gone — shown as a plain info row under the holdings instead.
+        if (ac.holdings.length > 0 && Math.abs(sipPctSum - 100) >= 0.01) {
+          rows.push(
+            '<tr><td colspan="9" style="padding:4px 12px 8px 34px;"><span class="hint warn" style="font-size:11px;color:var(--amber);">SIP % total: ' + sipPctSum.toFixed(0) + "%</span></td></tr>"
+          );
+        }
       }
     });
 
     if (state.assetClasses.length === 0) {
-      rows.push('<tr><td colspan="9" class="empty-msg">No asset classes yet. Add one below, or import a CSV/Excel file.</td></tr>');
+      rows.push('<tr><td colspan="9" class="empty-msg">No asset classes yet. Add one via the + button below, or import a CSV/Excel file.</td></tr>');
     }
-
-    rows.push(
-      '<tr class="add-row"><td colspan="9">' +
-        '<div class="name-cell" style="gap:8px;">' +
-          '<input class="cell-input name-input" placeholder="New asset class name" id="newClassName">' +
-          '<input class="cell-input small" type="number" placeholder="Target %" id="newClassTarget">' +
-          '<button class="btn primary" data-action="add-class">+ Add Asset Class</button>' +
-        "</div>" +
-      "</td></tr>"
-    );
 
     document.getElementById("allocationBody").innerHTML = rows.join("");
 
@@ -383,11 +422,9 @@
             '<button class="btn" style="padding:5px 9px;font-size:11px;" data-action="move-class-to-other" data-id="' + ac.id + '">⇄ Move</button>' +
             '<button class="btn danger" style="padding:5px 9px;font-size:11px;" data-action="delete-class" data-id="' + ac.id + '">✕ Delete</button></div>' +
           holdingsHtml +
-          '<div class="ac-add-inline">' +
-            '<div class="inline-row"><input class="cell-input name-input" placeholder="New holding name" id="newHoldingName_' + ac.id + '_m"><input class="cell-input amount" type="number" placeholder="Value" id="newHoldingValue_' + ac.id + '_m" style="width:90px;"></div>' +
-            '<div class="inline-row"><input class="cell-input small" type="number" placeholder="SIP %" id="newHoldingSip_' + ac.id + '_m" style="width:70px;"><button class="btn primary" style="color:#fff;flex:1;" data-action="add-holding" data-parent="' + ac.id + '">+ Add Holding</button></div>' +
-            '<span class="hint ' + (Math.abs(sipPctSum - 100) < 0.01 || ac.holdings.length === 0 ? "" : "warn") + '" style="font-size:11px;color:var(--muted);">SIP % total: ' + sipPctSum.toFixed(0) + "%</span>" +
-          "</div>" +
+          (ac.holdings.length > 0 && Math.abs(sipPctSum - 100) >= 0.01
+            ? '<span class="hint warn" style="display:block;font-size:11px;color:var(--amber);margin-top:8px;">SIP % total: ' + sipPctSum.toFixed(0) + "%</span>"
+            : "") +
         "</div>";
       }
       return '<div class="ac-card">' +
@@ -398,11 +435,8 @@
         body +
       "</div>";
     }).join("");
-    const emptyMsg = '<div class="empty-msg">No asset classes yet. Add one below, or import a CSV/Excel file.</div>';
-    document.getElementById("acCards").innerHTML = (cardsHtml || emptyMsg) +
-      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Asset Class Name</label><input id="newClassNameM" placeholder="e.g. REITs"></div>' +
-      '<div class="pl-row"><label>Target %</label><input type="number" id="newClassTargetM" placeholder="0"></div>' +
-      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-class">+ Add Asset Class</button></div>';
+    const emptyMsg = '<div class="empty-msg">No asset classes yet. Add one via the + button below, or import a CSV/Excel file.</div>';
+    document.getElementById("acCards").innerHTML = cardsHtml || emptyMsg;
   }
 
   function renderOtherTable(d) {
@@ -449,35 +483,12 @@
             "</tr>"
           );
         });
-        rows.push(
-          '<tr class="add-row"><td colspan="4">' +
-            '<div class="name-cell" style="gap:8px;padding-left:22px;">' +
-              '<input class="cell-input name-input" placeholder="New item name" id="newOtherHoldingName_' + o.id + '">' +
-              '<input class="cell-input amount" type="number" placeholder="Value" id="newOtherHoldingValue_' + o.id + '">' +
-              '<button class="btn" data-action="add-other-holding" data-parent="' + o.id + '">+ Add Item</button>' +
-            "</div>" +
-          "</td></tr>"
-        );
       }
     });
 
     if (state.otherAssets.length === 0) {
-      rows.push('<tr><td colspan="4" class="empty-msg">No other assets yet.</td></tr>');
+      rows.push('<tr><td colspan="4" class="empty-msg">No other assets yet. Add one via the + button below.</td></tr>');
     }
-
-    rows.push(
-      '<tr class="add-row"><td colspan="4">' +
-        '<div class="name-cell" style="gap:8px;flex-wrap:wrap;">' +
-          '<input class="cell-input name-input" placeholder="New item name" id="newOtherName">' +
-          '<input class="cell-input amount" type="number" placeholder="Value" id="newOtherValue">' +
-          '<input class="cell-input amount" type="number" placeholder="Monthly" id="newOtherMonthly">' +
-          '<button class="btn" data-action="add-other">+ Add Other Asset</button>' +
-          '<span style="width:1px;align-self:stretch;background:var(--border);"></span>' +
-          '<input class="cell-input name-input" placeholder="New subsection name (e.g. Bonds)" id="newOtherGroupName">' +
-          '<button class="btn" data-action="add-other-group">+ Add Subsection</button>' +
-        "</div>" +
-      "</td></tr>"
-    );
 
     document.getElementById("otherBody").innerHTML = rows.join("");
 
@@ -518,10 +529,6 @@
             '<button class="btn" style="padding:5px 9px;font-size:11px;" data-action="move-other-to-class" data-id="' + o.id + '">⇄ Move</button>' +
             '<button class="btn danger" style="padding:5px 9px;font-size:11px;" data-action="delete-other" data-id="' + o.id + '">✕ Delete</button></div>' +
           holdingsHtml +
-          '<div class="ac-add-inline">' +
-            '<div class="inline-row"><input class="cell-input name-input" placeholder="New item name" id="newOtherHoldingName_' + o.id + '_m"><input class="cell-input amount" type="number" placeholder="Value" id="newOtherHoldingValue_' + o.id + '_m" style="width:90px;"></div>' +
-            '<button class="btn primary" style="color:#fff;" data-action="add-other-holding" data-parent="' + o.id + '">+ Add Item</button>' +
-          "</div>" +
         "</div>";
       }
       html += '<div class="ac-card">' +
@@ -531,14 +538,8 @@
         body +
       "</div>";
     });
-    const emptyMsg = '<div class="empty-msg">No other assets yet.</div>';
-    document.getElementById("otherCards").innerHTML = (html || emptyMsg) +
-      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Item Name</label><input id="newOtherNameM" placeholder="e.g. NPS"></div>' +
-      '<div class="pl-row"><label>Value</label><input type="number" id="newOtherValueM" placeholder="0"></div>' +
-      '<div class="pl-row"><label>Monthly Contribution</label><input type="number" id="newOtherMonthlyM" placeholder="0"></div>' +
-      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-other">+ Add Other Asset</button></div>' +
-      '<div class="add-card"><div class="pl-row" style="margin-top:0;"><label>New Subsection Name</label><input id="newOtherGroupNameM" placeholder="e.g. Bonds"></div>' +
-      '<button class="btn primary" style="color:#fff;width:100%;margin-top:6px;" data-action="add-other-group">+ Add Subsection</button></div>';
+    const emptyMsg = '<div class="empty-msg">No other assets yet. Add one via the + button below.</div>';
+    document.getElementById("otherCards").innerHTML = html || emptyMsg;
   }
 
   function renderCharts(d) {
@@ -1670,6 +1671,16 @@
     document.getElementById("psCancel").addEventListener("click", () => document.getElementById("priceSettingsBackdrop").classList.remove("show"));
     document.getElementById("psSave").addEventListener("click", savePriceSettings);
 
+    document.getElementById("fabAdd").addEventListener("click", openAddModal);
+    document.getElementById("addCancel").addEventListener("click", () => document.getElementById("addBackdrop").classList.remove("show"));
+    document.getElementById("addTypePills").addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-pill");
+      if (btn) selectAddType(btn.dataset.addType);
+    });
+    document.getElementById("addIntoSelect").addEventListener("change", (e) => {
+      document.getElementById("addNewParentRow").style.display = e.target.value === "__new__" ? "block" : "none";
+    });
+
     // Enter commits an edit the same way clicking away does — blur() triggers the existing
     // "change" handler below rather than duplicating its logic.
     document.body.addEventListener("keydown", (e) => {
@@ -1709,63 +1720,66 @@
           if (og && Array.isArray(og.holdings)) runPriceRefresh(og.holdings.map((h) => ({ h })), actionEl);
           return;
         }
-        if (action === "add-class") {
-          // Two add-row copies exist (desktop table row + mobile add-card) — only one is
-          // visible at a time, so distinct ids avoid getElementById silently returning the
-          // hidden desktop one; pick the right pair via the same MOBILE_MQ flag used elsewhere.
-          const nameEl = document.getElementById(MOBILE_MQ.matches ? "newClassNameM" : "newClassName");
-          const targetEl = document.getElementById(MOBILE_MQ.matches ? "newClassTargetM" : "newClassTarget");
-          const name = nameEl.value.trim();
-          const target = parseFloat(targetEl.value) || 0;
-          if (!name) { toast("Enter a name for the new asset class."); return; }
-          const ac = { id: uid("ac"), name, targetPct: target, manualSipPct: target, holdings: [] };
-          state.assetClasses.push(ac);
-          expanded.add(ac.id);
+        if (action === "add-submit") {
+          if (currentAddType === "class") {
+            const name = document.getElementById("addClassName").value.trim();
+            if (!name) { toast("Enter a name for the new asset class."); return; }
+            const target = parseFloat(document.getElementById("addClassTarget").value) || 0;
+            const ac = { id: uid("ac"), name, targetPct: target, manualSipPct: target, holdings: [] };
+            state.assetClasses.push(ac);
+            expanded.add(ac.id);
+            lastClassId = ac.id;
+          } else if (currentAddType === "holding") {
+            const name = document.getElementById("addHoldingName").value.trim();
+            if (!name) { toast("Enter a name for the new holding."); return; }
+            const value = parseFloat(document.getElementById("addHoldingValue").value) || 0;
+            const sip = parseFloat(document.getElementById("addHoldingSip").value) || 0;
+            let classId = document.getElementById("addIntoSelect").value;
+            if (classId === "__new__") {
+              const newName = document.getElementById("addNewParentName").value.trim();
+              if (!newName) { toast("Enter a name for the new asset class."); return; }
+              const newAc = { id: uid("ac"), name: newName, targetPct: 0, manualSipPct: 0, holdings: [] };
+              state.assetClasses.push(newAc);
+              classId = newAc.id;
+            }
+            const ac = findClass(classId);
+            ac.holdings.push({ id: uid("h"), name, currentValue: value, sipPct: sip, isin: null });
+            expanded.add(ac.id);
+            lastClassId = ac.id;
+          } else if (currentAddType === "other") {
+            const name = document.getElementById("addOtherName").value.trim();
+            if (!name) { toast("Enter a name for the new item."); return; }
+            const value = parseFloat(document.getElementById("addOtherValue").value) || 0;
+            const monthly = parseFloat(document.getElementById("addOtherMonthly").value) || 0;
+            state.otherAssets.push({ id: uid("o"), name, currentValue: value, monthlyContribution: monthly });
+          } else if (currentAddType === "group") {
+            const name = document.getElementById("addGroupName").value.trim();
+            if (!name) { toast("Enter a name for the new subsection."); return; }
+            const og = { id: uid("o"), name, monthlyContribution: 0, holdings: [] };
+            state.otherAssets.push(og);
+            expanded.add(og.id);
+            lastGroupId = og.id;
+          } else if (currentAddType === "groupitem") {
+            const name = document.getElementById("addGroupItemName").value.trim();
+            if (!name) { toast("Enter a name for the new item."); return; }
+            const value = parseFloat(document.getElementById("addGroupItemValue").value) || 0;
+            let groupId = document.getElementById("addIntoSelect").value;
+            if (groupId === "__new__") {
+              const newName = document.getElementById("addNewParentName").value.trim();
+              if (!newName) { toast("Enter a name for the new group."); return; }
+              const newOg = { id: uid("o"), name: newName, monthlyContribution: 0, holdings: [] };
+              state.otherAssets.push(newOg);
+              groupId = newOg.id;
+            }
+            const og = findOther(groupId);
+            og.holdings.push({ id: uid("oh"), name, currentValue: value, isin: null });
+            expanded.add(og.id);
+            lastGroupId = og.id;
+          }
           persist(); renderAll();
-          return;
-        }
-        if (action === "add-holding") {
-          const parent = actionEl.dataset.parent;
-          const suffix = MOBILE_MQ.matches ? "_m" : "";
-          const nameEl = document.getElementById("newHoldingName_" + parent + suffix);
-          const valueEl = document.getElementById("newHoldingValue_" + parent + suffix);
-          const sipEl = document.getElementById("newHoldingSip_" + parent + suffix);
-          const name = nameEl.value.trim();
-          if (!name) { toast("Enter a name for the new holding."); return; }
-          const ac = findClass(parent);
-          if (ac) ac.holdings.push({ id: uid("h"), name, currentValue: parseFloat(valueEl.value) || 0, sipPct: parseFloat(sipEl.value) || 0, isin: null });
-          persist(); renderAll();
-          return;
-        }
-        if (action === "add-other") {
-          const m = MOBILE_MQ.matches;
-          const name = document.getElementById(m ? "newOtherNameM" : "newOtherName").value.trim();
-          const value = parseFloat(document.getElementById(m ? "newOtherValueM" : "newOtherValue").value) || 0;
-          const monthly = parseFloat(document.getElementById(m ? "newOtherMonthlyM" : "newOtherMonthly").value) || 0;
-          if (!name) { toast("Enter a name for the new item."); return; }
-          state.otherAssets.push({ id: uid("o"), name, currentValue: value, monthlyContribution: monthly });
-          persist(); renderAll();
-          return;
-        }
-        if (action === "add-other-group") {
-          const name = document.getElementById(MOBILE_MQ.matches ? "newOtherGroupNameM" : "newOtherGroupName").value.trim();
-          if (!name) { toast("Enter a name for the new subsection."); return; }
-          const og = { id: uid("o"), name, monthlyContribution: 0, holdings: [] };
-          state.otherAssets.push(og);
-          expanded.add(og.id);
-          persist(); renderAll();
-          return;
-        }
-        if (action === "add-other-holding") {
-          const parent = actionEl.dataset.parent;
-          const suffix = MOBILE_MQ.matches ? "_m" : "";
-          const nameEl = document.getElementById("newOtherHoldingName_" + parent + suffix);
-          const valueEl = document.getElementById("newOtherHoldingValue_" + parent + suffix);
-          const name = nameEl.value.trim();
-          if (!name) { toast("Enter a name for the new item."); return; }
-          const og = findOther(parent);
-          if (og && Array.isArray(og.holdings)) og.holdings.push({ id: uid("oh"), name, currentValue: parseFloat(valueEl.value) || 0, isin: null });
-          persist(); renderAll();
+          document.getElementById("addBackdrop").classList.remove("show");
+          clearAddModalFields();
+          toast("Added.");
           return;
         }
         if (action === "delete-other-holding") {

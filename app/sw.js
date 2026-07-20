@@ -8,7 +8,7 @@
    offline. Library files (lib/*) rarely change, so they stay cache-first to avoid
    re-downloading them every load. */
 
-const CACHE_NAME = "fintrack-shell-v9";
+const CACHE_NAME = "fintrack-shell-v10";
 const APP_FILES = [
   "./", "./index.html", "./app.js", "./tracker.html", "./tracker.js",
   "./shared.css", "./theme.js", "./drive-sync.js", "./manifest.json"
