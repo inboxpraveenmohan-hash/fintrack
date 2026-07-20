@@ -51,6 +51,69 @@
   .pl-test-result{font-size:12px;}
   .pl-test-result.ok{color:var(--green);}
   .pl-test-result.err{color:var(--red);}
+
+  /* ---------- Mobile helpers, hidden on desktop ---------- */
+  #acCards{display:none;}
+  #otherCards{display:none;}
+
+  /* ---------- Asset-class / subsection cards (mobile replacement for both tables) ---------- */
+  .ac-card{border-bottom:1px solid var(--row-line);}
+  .ac-card:last-child{border-bottom:none;}
+  .ac-head{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;}
+  .ac-head .name-input{flex:1;min-width:0;font-weight:700;background:transparent;}
+  .ac-head .ac-pct{font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .ac-body{padding:0 14px 12px 34px;}
+  .ac-meta{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px;color:var(--muted);gap:8px;}
+  .ac-meta b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600;}
+  .ac-meta b.pos{color:var(--red);} .ac-meta b.neg{color:var(--green);}
+  .ac-meta .cell-input{width:70px;}
+  .ac-actions{display:flex;gap:6px;padding:6px 0 8px;}
+  .hrow-m{padding:8px 0;border-top:1px solid var(--row-line);}
+  .hrow-m .hrow-top{display:flex;align-items:center;gap:6px;}
+  .hrow-m .hrow-top .name-input{flex:1;min-width:0;}
+  .hrow-m .hrow-bottom{display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .hrow-m .hrow-bottom .amount{flex:1;min-width:0;}
+  .hrow-m .hrow-bottom .sipwrap{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);white-space:nowrap;}
+  .hrow-m .hrow-bottom .small{width:48px;}
+  .oa-simple-card{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--row-line);}
+  .oa-simple-card:last-child{border-bottom:none;}
+  .oa-simple-card .name-input{flex:1 1 100px;min-width:0;font-weight:600;}
+  .oa-simple-card .amount{width:84px;}
+
+  /* ---------- Persistent "+ Add" button — labeled pill on desktop, plain circular FAB on
+     mobile (icon-only, thumb-reachable bottom-right). Same element/handler both layouts; the
+     mobile media query below only overrides its shape, not its visibility. Matches tracker.html's
+     "+ Add Transaction" FAB so both pages share the one add-something affordance. ---------- */
+  .fab{position:fixed;right:18px;bottom:18px;z-index:40;border:none;background:var(--primary);color:#fff;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;gap:7px;font-family:inherit;border-radius:24px;padding:13px 20px 13px 16px;font-size:13.5px;font-weight:700;transition:.15s background,.15s transform;}
+  .fab:hover{background:var(--primary-dark);}
+  .fab .fab-plus{font-size:18px;line-height:1;}
+
+  /* ---------- Add to Portfolio modal: type selector + conditional fields ---------- */
+  .type-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+  .type-pill{border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-weight:600;padding:7px 12px;border-radius:20px;cursor:pointer;font-family:inherit;}
+  .type-pill:hover{border-color:var(--primary);}
+  .type-pill.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .add-type-fields{display:none;}
+  .add-type-fields.active{display:block;}
+
+  /* ---------- Mobile layout (≤720px) — switches automatically, desktop above is untouched ---------- */
+  @media (max-width:720px){
+    .wrap{padding:12px 12px 90px;}
+    header.topbar{padding:10px 0;}
+    .stats{grid-template-columns:1fr 1fr;}
+    .stat-card .value{font-size:19px;}
+    /* Asset Allocation / Other Assets: tables give way to tap-to-expand cards */
+    #allocationTable{display:none;}
+    #acCards{display:block;}
+    #otherTable{display:none;}
+    #otherCards{display:block;}
+    .fab{width:54px;height:54px;padding:0;border-radius:50%;font-size:0;bottom:calc(18px + env(safe-area-inset-bottom));}
+    .fab .fab-plus{font-size:26px;}
+    .fab .fab-label{display:none;}
+    /* Add modal docks to the bottom as a sheet, same treatment as tracker.html's */
+    #addBackdrop{align-items:flex-end;}
+    #addBackdrop .modal{width:100%;max-width:none;border-radius:18px 18px 0 0;padding-bottom:26px;}
+  }
 </style>
 </head>
 <body>
@@ -150,6 +213,7 @@
         <tbody id="allocationBody"></tbody>
       </table>
     </div>
+    <div id="acCards"></div>
   </div>
 
   <div class="section">
@@ -173,6 +237,7 @@
         <tbody id="otherBody"></tbody>
       </table>
     </div>
+    <div id="otherCards"></div>
   </div>
 
   <footer>Your data stays in this browser (localStorage), and also syncs to your own Google Drive if you've signed in to Cloud Sync above — it's never sent anywhere else. Use Export to back up.</footer>
@@ -265,6 +330,59 @@
     </div>
   </div>
 </div>
+
+<div class="modal-backdrop" id="addBackdrop">
+  <div class="modal">
+    <h3>Add to Portfolio</h3>
+    <p class="pl-hint" style="margin:4px 0 0;">Choose what you're adding — the right fields show up below.</p>
+
+    <div class="type-pills" id="addTypePills">
+      <button class="type-pill active" data-add-type="holding">Holding</button>
+      <button class="type-pill" data-add-type="class">Asset Class</button>
+      <button class="type-pill" data-add-type="other">Other Asset</button>
+      <button class="type-pill" data-add-type="group">Asset Group</button>
+      <button class="type-pill" data-add-type="groupitem">Item in Group</button>
+    </div>
+
+    <div class="pl-row" id="addIntoRow" style="display:none;">
+      <label id="addIntoLabel">Into Asset Class</label>
+      <select id="addIntoSelect"></select>
+    </div>
+    <div class="pl-row" id="addNewParentRow" style="display:none;">
+      <label id="addNewParentLabel">New Class Name</label>
+      <input id="addNewParentName" placeholder="e.g. International Equity">
+    </div>
+
+    <div class="add-type-fields active" data-add-type="holding">
+      <div class="pl-row"><label>Name</label><input id="addHoldingName" placeholder="e.g. Nifty Next 50 Fund"></div>
+      <div class="pl-row"><label>Current Value (₹)</label><input type="number" id="addHoldingValue" placeholder="0"></div>
+      <div class="pl-row"><label>Monthly SIP %</label><input type="number" id="addHoldingSip" placeholder="0"></div>
+    </div>
+    <div class="add-type-fields" data-add-type="class">
+      <div class="pl-row"><label>Name</label><input id="addClassName" placeholder="e.g. International Equity"></div>
+      <div class="pl-row"><label>Target %</label><input type="number" id="addClassTarget" placeholder="0"></div>
+    </div>
+    <div class="add-type-fields" data-add-type="other">
+      <div class="pl-row"><label>Name</label><input id="addOtherName" placeholder="e.g. Fixed Deposit"></div>
+      <div class="pl-row"><label>Current Value (₹)</label><input type="number" id="addOtherValue" placeholder="0"></div>
+      <div class="pl-row"><label>Monthly Contribution (₹)</label><input type="number" id="addOtherMonthly" placeholder="0"></div>
+    </div>
+    <div class="add-type-fields" data-add-type="group">
+      <div class="pl-row"><label>Name</label><input id="addGroupName" placeholder="e.g. Bonds"></div>
+    </div>
+    <div class="add-type-fields" data-add-type="groupitem">
+      <div class="pl-row"><label>Name</label><input id="addGroupItemName" placeholder="e.g. Corporate Bond FY30"></div>
+      <div class="pl-row"><label>Current Value (₹)</label><input type="number" id="addGroupItemValue" placeholder="0"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="addCancel">Cancel</button>
+      <button class="btn primary" data-action="add-submit" style="color:#fff;">+ Add</button>
+    </div>
+  </div>
+</div>
+
+<button class="fab" id="fabAdd" title="Add to portfolio"><span class="fab-plus">+</span><span class="fab-label">Add</span></button>
 
 <div class="toast" id="toast"></div>
 
