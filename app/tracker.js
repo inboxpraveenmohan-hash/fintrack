@@ -513,9 +513,9 @@
 
   function renderStats(d) {
     document.getElementById("statCards").innerHTML = [
-      card("Total Income", fmtINR(d.totalIncome), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalIncome", "Total Income")),
-      card("Total Expenses", fmtINR(d.totalExpense), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalExpenses", "Total Expenses")),
-      card("Total Savings", fmtINR(d.totalSavings), '<span class="hint">' + fmtMonthLabel(selectedMonth) + "</span>", customizeStatBtn("totalSavings", "Total Savings")),
+      card("Total Income", fmtINR(d.totalIncome), "", customizeStatBtn("totalIncome", "Total Income")),
+      card("Total Expenses", fmtINR(d.totalExpense), "", customizeStatBtn("totalExpenses", "Total Expenses")),
+      card("Total Savings", fmtINR(d.totalSavings), "", customizeStatBtn("totalSavings", "Total Savings")),
       card("Transactions", String(d.txnCount), '<span class="hint">this month</span>')
     ].join("");
   }
