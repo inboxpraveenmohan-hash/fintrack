@@ -170,6 +170,12 @@
        balance fields below, each clearly labeled — see .acct-card rules above) */
     #accountsTable{display:none;}
     #accountsCards{display:block;}
+    /* #budgetCards/#accountsCards are ID selectors (specificity always beats any number of
+       classes), so the generic ".section.mcollapsed > :not(.section-head)" rule above could
+       never actually hide them — collapsing either section visibly did nothing. These two
+       ID+class overrides outrank both the "show" rules above AND the generic collapse rule. */
+    #secBudget.mcollapsed #budgetCards{display:none;}
+    #secAccounts.mcollapsed #accountsCards{display:none;}
     /* Transaction Log: table swaps out for cards; header add-button gives way to the FAB */
     #txnTable{display:none;}
     .txn-cards{display:block;}
