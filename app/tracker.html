@@ -166,6 +166,16 @@
     .mcollapsed .msec-toggle{transform:rotate(-90deg);}
     #chartsSection.mcollapsed .charts{display:none;}
     #chartsSection:not(.mcollapsed) .msec-head{margin-bottom:14px;}
+    /* #chartsSection is a bare div, not a .section — it has no margin-bottom of its own to
+       separate it from Budget vs Actual below, unlike every other section (shared.css gives
+       .section a permanent margin-bottom:20px regardless of collapse state). Instead it was
+       relying on .charts' own margin-bottom:22px (shared.css) to create that gap — which
+       vanishes along with .charts when collapsed (display:none drops the margin too), leaving
+       the collapsed header pill sitting almost flush against the next section. Giving the
+       wrapper its own unconditional margin-bottom, and pinning .charts' to the same value,
+       makes the gap identical collapsed or expanded. */
+    #chartsSection{margin-bottom:20px;}
+    .charts{margin-bottom:20px;}
     .section.mcollapsed > :not(.section-head){display:none;}
     .section.mcollapsed .section-head .btn{display:none;}
     /* Budget vs Actual: the table gives way to tap-to-expand group cards */
