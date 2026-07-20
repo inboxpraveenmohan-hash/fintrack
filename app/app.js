@@ -262,7 +262,8 @@
           "<td>" + (d.sipMode === "manual"
             ? '<input class="cell-input small" type="number" step="0.1" data-type="class" data-id="' + ac.id + '" data-field="manualSipPct" value="' + numOr0(ac.manualSipPct) + '" onclick="event.stopPropagation()"> % → ' + fmtINR(ac.sipAmount)
             : fmtPct(ac.sipAllocPct) + " → " + fmtINR(ac.sipAmount)) + "</td>" +
-          '<td><button class="icon-btn move-btn" data-action="move-class-to-other" data-id="' + ac.id + '" title="Move to Other Assets">⇄</button>' +
+          '<td><button class="icon-btn" data-action="refresh-class-prices" data-id="' + ac.id + '" title="Refresh prices for this class’s linked holdings">↻</button>' +
+            '<button class="icon-btn move-btn" data-action="move-class-to-other" data-id="' + ac.id + '" title="Move to Other Assets">⇄</button>' +
             '<button class="icon-btn" data-action="delete-class" data-id="' + ac.id + '" title="Delete asset class">✕</button></td>' +
         "</tr>"
       );
@@ -361,7 +362,8 @@
           "</div></td>" +
           "<td>" + fmtINR(o.currentValue) + "</td>" +
           '<td><input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '" onclick="event.stopPropagation()"></td>' +
-          '<td><button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
+          '<td><button class="icon-btn" data-action="refresh-other-prices" data-id="' + o.id + '" title="Refresh prices for this section’s linked holdings">↻</button>' +
+            '<button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
             '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete section (and its items)">✕</button></td>' +
         "</tr>"
       );
@@ -1133,16 +1135,21 @@
 
   function round2(n) { return Math.round(n * 100) / 100; }
 
-  async function refreshPrices() {
-    const btn = document.getElementById("btnRefreshPrices");
-    const linked = allHoldingRefsForPrices().filter((r) => isPriceLinked(r.h));
+  function refreshPrices() {
+    return runPriceRefresh(allHoldingRefsForPrices(), document.getElementById("btnRefreshPrices"));
+  }
+
+  // Shared core for the global toolbar button and the per-section ↻ icons — `refs` scopes
+  // which holdings are considered; `btn` (optional) gets a busy state while fetching.
+  async function runPriceRefresh(refs, btn) {
+    const linked = refs.filter((r) => isPriceLinked(r.h));
     if (linked.length === 0) {
-      toast("No holdings linked yet — use the ₹ button on a holding row to link one.");
+      toast("No linked holdings here yet — use the ₹ button on a holding row to link one.");
       return;
     }
-    btn.disabled = true;
-    const oldLabel = btn.textContent;
-    btn.textContent = "Refreshing…";
+    const isIcon = btn && btn.classList.contains("icon-btn");
+    const oldLabel = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = isIcon ? "…" : "Refreshing…"; }
     try {
       const failures = [];
       const ready = [];
@@ -1211,8 +1218,9 @@
       if (failures.length > 0) msg += ", " + failures.length + " failed (" + failures[0].name + ": " + failures[0].reason + (failures.length > 1 ? ", …" : "") + ")";
       toast(msg + ".");
     } finally {
-      btn.disabled = false;
-      btn.textContent = oldLabel;
+      // renderAll() may have replaced the button with a fresh copy; restoring the (possibly
+      // detached) original is still correct for the no-update path where no re-render ran.
+      if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
     }
   }
 
@@ -1292,7 +1300,7 @@
     const q = document.getElementById("plMfSearch").value.trim();
     if (!q) return;
     const resultsEl = document.getElementById("plMfResults");
-    resultsEl.style.display = "";
+    resultsEl.style.display = "block"; // NOT "": the stylesheet default is display:none, so clearing the inline style would re-hide it
     resultsEl.innerHTML = '<div class="pl-result" style="cursor:default;color:var(--muted);">Searching…</div>';
     let results;
     try { results = await fetchJson(MFAPI_BASE + "/mf/search?q=" + encodeURIComponent(q)); }
@@ -1551,6 +1559,16 @@
 
         if (action === "link-price") {
           openPriceLinkModal(actionEl.dataset.kind, actionEl.dataset.parent, actionEl.dataset.id);
+          return;
+        }
+        if (action === "refresh-class-prices") {
+          const ac = findClass(actionEl.dataset.id);
+          if (ac) runPriceRefresh(ac.holdings.map((h) => ({ h })), actionEl);
+          return;
+        }
+        if (action === "refresh-other-prices") {
+          const og = findOther(actionEl.dataset.id);
+          if (og && Array.isArray(og.holdings)) runPriceRefresh(og.holdings.map((h) => ({ h })), actionEl);
           return;
         }
         if (action === "add-class") {
