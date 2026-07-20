@@ -195,6 +195,26 @@
   let pendingStatementAccountName = null; // account chosen/typed in the statement-import account picker, before the file is chosen
   let expandedTxnCardId = null; // which mobile transaction card is expanded — survives re-renders so an edit doesn't collapse it
   let addTxnSessionCount = 0; // how many transactions "Add Another" has committed since the add modal was opened
+  const TXN_CARD_CHUNK = 50; // mobile card list renders in chunks — heavy months stay fast
+  let txnCardLimit = TXN_CARD_CHUNK; // grows via "Show older"; resets on month/filter/search/sort change
+  let expandedBudgetGroups = new Set(); // which mobile budget group cards are open (session-only)
+  // Same breakpoint as the CSS media query. Falls back to a static non-matching stub where
+  // matchMedia isn't available (jsdom's test environment, and conceivably an odd WebView) —
+  // mobile-only JS behaviors (month bar relocation, legend position) simply stay desktop-like
+  // there, while the CSS media query itself still switches normally in any real browser.
+  const MOBILE_MQ = typeof window.matchMedia === "function"
+    ? window.matchMedia("(max-width:720px)")
+    : { matches: false, addEventListener: null };
+
+  // Collapsed state of the mobile review sections (charts/budget/accounts) — a per-device view
+  // preference, so it lives in its own localStorage key, never in the synced data blob.
+  const COLLAPSE_KEY = "fintrack_ledger_collapsed";
+  function loadCollapsedSections() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveCollapsedSections(map) {
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(map)); } catch (e) { /* view-only pref */ }
+  }
 
   let storageWarned = false;
   function persist() {
@@ -439,6 +459,7 @@
       '<td><input class="cell-input" type="number" placeholder="Opening" id="newAccountOpening"></td><td></td>' +
       '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-account">+ Add</button></td></tr>';
     document.getElementById("accountsBody").innerHTML = rows;
+    document.getElementById("acctHint").textContent = tracker().accounts.length + " account" + (tracker().accounts.length === 1 ? "" : "s");
   }
 
   // Shows every transfer (not scoped to the selected month) — this renders into the Manage
@@ -484,37 +505,68 @@
   function renderBudget(d) {
     const totalRows = d.budgetGroups.reduce((n, g) => n + g.rows.length, 0);
     if (totalRows === 0) {
-      document.getElementById("budgetBody").innerHTML = '<tr><td colspan="4" class="empty-msg">No categories yet — add one via Manage Categories.</td></tr>';
+      const empty = '<tr><td colspan="4" class="empty-msg">No categories yet — add one via Manage Categories.</td></tr>';
+      document.getElementById("budgetBody").innerHTML = empty;
+      document.getElementById("budgetCards").innerHTML = '<div class="empty-msg">No categories yet — add one via Manage Categories.</div>';
+      document.getElementById("budgetHint").textContent = "";
       return;
     }
     // Top-level accent bar color matches that group's own color in the "By Top-Level Category"
     // chart (same PALETTE, same index order) — see renderCharts() below.
     const topLevelIds = tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
     let i = 0;
-    document.getElementById("budgetBody").innerHTML = d.budgetGroups.map((g) => {
+    let totalActual = 0, totalBudget = 0;
+    const tableParts = [];
+    const cardParts = [];
+    d.budgetGroups.forEach((g) => {
       const topIdx = topLevelIds.indexOf(g.topLevel.id);
       const topColor = PALETTE[(topIdx < 0 ? 0 : topIdx) % PALETTE.length];
-      const header = '<tr class="budget-group-head"><td colspan="4"><span class="accent-bar" style="background:' + topColor + '"></span>' + escapeHtml(g.topLevel.name) + "</td></tr>";
-      const rows = g.rows.map((row) => {
+      tableParts.push('<tr class="budget-group-head"><td colspan="4"><span class="accent-bar" style="background:' + topColor + '"></span>' + escapeHtml(g.topLevel.name) + "</td></tr>");
+      let gActual = 0, gBudget = 0;
+      const subParts = [];
+      g.rows.forEach((row) => {
         const idx = i++;
         const barPct = Math.min(row.pct, 100);
         const over = row.hasBudget && row.budget > 0 && row.pct > 100 && !row.netNegative;
-        const budgetCell = row.hasBudget
+        const budgetInput = row.hasBudget
           ? '<input class="cell-input amount" type="number" step="1" data-type="budget" data-field="budget" data-id="' + row.category.id + '" value="' + numOr0(tracker().budgets[row.category.id]) + '">'
           : "";
         const barClass = row.netNegative ? " negative" : (over ? " over" : "");
-        const barCell = row.hasBudget
+        const bar = row.hasBudget
           ? '<div class="budget-bar-track"><div class="budget-bar-fill' + barClass + '" style="width:' + barPct + '%"></div></div>'
           : "";
-        return "<tr>" +
+        gActual += row.actual;
+        if (row.hasBudget) {
+          gBudget += numOr0(tracker().budgets[row.category.id]);
+          totalActual += row.actual;
+        }
+        tableParts.push("<tr>" +
           '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[idx % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
-          "<td>" + budgetCell + "</td>" +
+          "<td>" + budgetInput + "</td>" +
           '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
-          '<td style="min-width:110px;">' + barCell + "</td>" +
-          "</tr>";
-      }).join("");
-      return header + rows;
-    }).join("");
+          '<td style="min-width:110px;">' + bar + "</td>" +
+          "</tr>");
+        subParts.push('<div class="brow-m"><div class="brow-line">' +
+          '<span class="brow-name"><span class="swatch" style="background:' + PALETTE[idx % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</span>" +
+          '<span class="brow-actual ' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</span>" + budgetInput +
+          "</div>" + bar + "</div>");
+      });
+      totalBudget += gBudget;
+      // Group summary card: one bar per top-level group; its sub-categories expand on tap.
+      const gPct = gBudget > 0 ? Math.min((gActual / gBudget) * 100, 100) : 0;
+      const gOver = gBudget > 0 && gActual > gBudget;
+      const gBar = gBudget > 0
+        ? '<div class="bgroup-bar"><div class="budget-bar-track"><div class="budget-bar-fill' + (gOver ? " over" : "") + '" style="width:' + gPct + '%"></div></div></div>'
+        : "";
+      cardParts.push('<div class="bgroup' + (expandedBudgetGroups.has(g.topLevel.id) ? " open" : "") + '" data-bgroup="' + g.topLevel.id + '">' +
+        '<div class="bgroup-head"><span class="bchev">▶</span><span class="accent-bar" style="background:' + topColor + ';margin-right:0;"></span>' +
+        '<span class="bg-name">' + escapeHtml(g.topLevel.name) + '</span>' +
+        '<span class="bg-amt">' + fmtINR(gActual) + (gBudget > 0 ? " / " + fmtINR(gBudget) : "") + "</span></div>" +
+        gBar + '<div class="bgroup-sub">' + subParts.join("") + "</div></div>");
+    });
+    document.getElementById("budgetBody").innerHTML = tableParts.join("");
+    document.getElementById("budgetCards").innerHTML = cardParts.join("");
+    document.getElementById("budgetHint").textContent = totalBudget > 0 ? fmtINR(totalActual) + " of " + fmtINR(totalBudget) : "";
   }
 
   function renderCharts(d) {
@@ -531,7 +583,9 @@
         data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: cardBg }] },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
+          // Phones: legend below so the donut gets the full width instead of fighting a tall
+          // side stack of labels. renderAll() re-runs on breakpoint change (see init).
+          plugins: { legend: { position: MOBILE_MQ.matches ? "bottom" : "right", labels: { boxWidth: 10, font: { size: 10 }, color: mutedColor } } }
         }
       });
     }
@@ -829,14 +883,39 @@
     // CSS, so both are always in the DOM. The card inputs reuse the exact data-type/data-id/
     // data-field convention, which means the one delegated "change" handler below serves both
     // representations without knowing which one the user is looking at.
-    const cardsHtml = rows.map((t) => {
+    // Cards are grouped under sticky day headers (weekday + date + that day's net), so each
+    // card drops its date chip; and only the first txnCardLimit cards render — "Show older"
+    // extends the window, keeping heavy months cheap to re-render on every edit.
+    const netByDate = {};
+    rows.forEach((t) => {
+      const key = t.date || "?";
+      netByDate[key] = (netByDate[key] || 0) + (t.direction === "in" ? 1 : -1) * (Number(t.amount) || 0);
+    });
+    function dayHeadHtml(date) {
+      let label = "No date";
+      if (date && date !== "?") {
+        const d2 = new Date(date + "T00:00:00");
+        const wd = isNaN(d2.getTime()) ? "" : d2.toLocaleDateString(undefined, { weekday: "short" }) + ", ";
+        label = wd + Number(date.slice(8, 10)) + " " + (MONTH_NAMES[Number(date.slice(5, 7)) - 1] || "");
+      }
+      const net = netByDate[date || "?"] || 0;
+      // The day's net covers ALL of that day's (filtered) rows, even when "Show older" has
+      // cut the day's card list short — a truncated day still shows its true total.
+      const netHtml = "<b class=\"" + (net < 0 ? "net-out" : "net-in") + "\">" + (net < 0 ? "−" : "+") + fmtINR(Math.abs(net)) + "</b>";
+      return '<div class="day-head"><span>' + escapeHtml(label) + "</span>" + netHtml + "</div>";
+    }
+    const shownRows = rows.slice(0, txnCardLimit);
+    let cardsHtml = "";
+    let currentDay = null;
+    shownRows.forEach((t) => {
+      const key = t.date || "?";
+      if (key !== currentDay) { currentDay = key; cardsHtml += dayHeadHtml(t.date); }
       const cat = findCategory(t.categoryId);
       const acct = findAccount(t.accountId);
-      const dayChip = t.date ? t.date.slice(8, 10) + " " + (MONTH_NAMES[Number(t.date.slice(5, 7)) - 1] || "") : "?";
       const isIn = t.direction === "in";
-      return '<div class="txn-card' + (t.id === expandedTxnCardId ? " expanded" : "") + '" data-txn-card="' + t.id + '">' +
+      cardsHtml += '<div class="txn-card' + (t.id === expandedTxnCardId ? " expanded" : "") + '" data-txn-card="' + t.id + '">' +
         '<div class="txn-top"><span class="txn-item-label">' + escapeHtml(t.item) + '</span><span class="txn-amt ' + (isIn ? "in" : "out") + '">' + (isIn ? "+" : "−") + fmtINR(t.amount) + "</span></div>" +
-        '<div class="txn-meta"><span class="tchip">' + dayChip + '</span><span class="tchip cat">' + escapeHtml(cat ? cat.name : "?") + '</span><span class="tchip">' + escapeHtml(acct ? acct.name : "?") + '</span><span class="tchip ' + (isIn ? "dir-in" : "dir-out") + '">' + (isIn ? "In" : "Out") + "</span></div>" +
+        '<div class="txn-meta"><span class="tchip cat">' + escapeHtml(cat ? cat.name : "?") + '</span><span class="tchip">' + escapeHtml(acct ? acct.name : "?") + '</span><span class="tchip ' + (isIn ? "dir-in" : "dir-out") + '">' + (isIn ? "In" : "Out") + "</span></div>" +
         '<div class="txn-edit"><div class="field-grid">' +
         '<div class="field"><label>Date</label><input type="date" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></div>' +
         '<div class="field"><label>Amount</label><input type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></div>' +
@@ -846,7 +925,10 @@
         '<div class="field"><label>In / Out</label><select data-type="txn" data-id="' + t.id + '" data-field="direction"><option value="out"' + (isIn ? "" : " selected") + '>Out</option><option value="in"' + (isIn ? " selected" : "") + ">In</option></select></div>" +
         '</div><div class="txn-edit-actions"><button class="del-link" data-action="delete-txn" data-id="' + t.id + '">✕ Delete</button><span class="tchip">changes save instantly</span></div></div>' +
         "</div>";
-    }).join("");
+    });
+    if (rows.length > txnCardLimit) {
+      cardsHtml += '<button class="show-older" data-action="show-older-txns">Show older (' + (rows.length - txnCardLimit) + " more)</button>";
+    }
     document.getElementById("txnCards").innerHTML = cardsHtml || '<div class="empty-msg">' + emptyMsg + "</div>";
 
     populateAddTxnSelects();
@@ -943,6 +1025,7 @@
 
   function shiftMonth(delta) {
     selectedMonth = monthShifted(selectedMonth, delta);
+    txnCardLimit = TXN_CARD_CHUNK; // new month, fresh card window
     renderAll();
   }
 
@@ -1263,6 +1346,7 @@
     document.getElementById("monthJump").addEventListener("change", (e) => {
       if (!e.target.value) return; // cleared rather than a real month picked — ignore, keep the current month
       selectedMonth = e.target.value;
+      txnCardLimit = TXN_CARD_CHUNK;
       renderAll();
     });
     // On mobile the month input is visually hidden and this icon opens its native picker wheel
@@ -1270,6 +1354,59 @@
     document.getElementById("btnMonthCal").addEventListener("click", () => {
       const inp = document.getElementById("monthJump");
       try { if (inp.showPicker) inp.showPicker(); else inp.focus(); } catch (err) { inp.focus(); }
+    });
+
+    // On phones the month switcher relocates from the toolbar into #monthBarSlot, a sticky
+    // strip at the top of the viewport — position:sticky can't stick beyond its parent's box,
+    // so the element itself has to move out of the toolbar. Listeners survive the move (they
+    // sit on elements inside .month-switch or on delegated document handlers).
+    function placeMonthBar() {
+      const bar = document.querySelector(".month-switch");
+      if (MOBILE_MQ.matches) document.getElementById("monthBarSlot").appendChild(bar);
+      else document.querySelector(".toolbar").appendChild(bar);
+    }
+    placeMonthBar();
+    if (MOBILE_MQ.addEventListener) {
+      MOBILE_MQ.addEventListener("change", () => {
+        placeMonthBar();
+        renderAll(); // charts re-draw so the donut legend flips between right (desktop) and bottom (mobile)
+      });
+    }
+
+    // Collapsible review sections (mobile): tap a header with data-mcollapse to fold that
+    // section. The class toggles everywhere, but the CSS that hides content lives inside the
+    // ≤720px media query, so desktop never changes visually.
+    const collapsedMap = loadCollapsedSections();
+    Object.keys(collapsedMap).forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && collapsedMap[id]) el.classList.add("mcollapsed");
+    });
+    document.querySelectorAll("[data-mcollapse]").forEach((head) => {
+      head.addEventListener("click", (e) => {
+        if (e.target.closest("input,select,button:not(.msec-toggle),a")) return;
+        const sec = document.getElementById(head.dataset.mcollapse);
+        if (!sec) return;
+        sec.classList.toggle("mcollapsed");
+        collapsedMap[head.dataset.mcollapse] = sec.classList.contains("mcollapsed") ? 1 : 0;
+        saveCollapsedSections(collapsedMap);
+      });
+    });
+
+    // Mobile budget group cards: tap a group row to expand/collapse its categories. Pure view
+    // state — toggled directly on the DOM, and re-applied from the Set on every re-render.
+    document.getElementById("budgetCards").addEventListener("click", (e) => {
+      const head = e.target.closest(".bgroup-head");
+      if (!head || e.target.closest("input,select,button")) return;
+      const grp = head.closest(".bgroup");
+      const id = grp.dataset.bgroup;
+      if (expandedBudgetGroups.has(id)) expandedBudgetGroups.delete(id); else expandedBudgetGroups.add(id);
+      grp.classList.toggle("open");
+    });
+
+    // The ⋯ overflow's Clear Month simply relays to the real button so the confirm flow,
+    // counts, and deletion logic stay in one place.
+    document.getElementById("btnClearMonthM").addEventListener("click", () => {
+      document.getElementById("btnClearMonth").click();
     });
 
     document.getElementById("btnAddTxn").addEventListener("click", openAddTxnModal);
@@ -1304,6 +1441,7 @@
     document.getElementById("txnFilterCategoryM").addEventListener("change", (e) => {
       filterCategoryId = e.target.value;
       document.getElementById("txnFilterCategory").value = filterCategoryId;
+      txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
 
@@ -1484,15 +1622,18 @@
 
     document.getElementById("txnSearch").addEventListener("input", (e) => {
       searchQuery = e.target.value;
+      txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
     document.getElementById("txnFilterCategory").addEventListener("change", (e) => {
       filterCategoryId = e.target.value;
       document.getElementById("txnFilterCategoryM").value = filterCategoryId;
+      txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
     document.getElementById("txnSortOrder").addEventListener("change", (e) => {
       sortOrder = e.target.value;
+      txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
     document.getElementById("btnClearMonth").addEventListener("click", async () => {
@@ -1588,6 +1729,11 @@
       if (!actionEl) return;
       const action = actionEl.dataset.action;
 
+      if (action === "show-older-txns") {
+        txnCardLimit += 100;
+        renderTransactions(computeDerivedTracker());
+        return;
+      }
       if (action === "prev-month") { shiftMonth(-1); return; }
       if (action === "next-month") { shiftMonth(1); return; }
 
