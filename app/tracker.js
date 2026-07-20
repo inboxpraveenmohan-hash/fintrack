@@ -454,18 +454,13 @@
         '<td><button class="icon-btn" data-action="delete-account" data-id="' + a.id + '" title="Delete account">✕</button></td>' +
         "</tr>";
     }).join("");
-    if (!rows) rows = '<tr><td colspan="4" class="empty-msg">No accounts yet.</td></tr>';
-    rows += '<tr class="add-row"><td class="left"><input class="cell-input name-input" placeholder="New account name" id="newAccountName"></td>' +
-      '<td><input class="cell-input" type="number" placeholder="Opening" id="newAccountOpening"></td><td></td>' +
-      '<td><button class="btn" style="padding:5px 10px;font-size:11px;" data-action="add-account">+ Add</button></td></tr>';
+    if (!rows) rows = '<tr><td colspan="4" class="empty-msg">No accounts yet — add one from Manage ▾.</td></tr>';
     document.getElementById("accountsBody").innerHTML = rows;
     document.getElementById("acctHint").textContent = tracker().accounts.length + " account" + (tracker().accounts.length === 1 ? "" : "s");
 
     // Mobile card rendering of the same accounts — hidden on desktop (and vice versa) purely
     // via CSS, both always in the DOM. Reuses the identical data-type="account" convention on
-    // every input, so the existing delegated "change" handler serves both representations, and
-    // the add-account/delete-account action handlers (which look up #newAccountName/
-    // #newAccountOpening by id) work unmodified since only one copy is ever visible at a time.
+    // every input, so the existing delegated "change" handler serves both representations.
     let cardsHtml = tracker().accounts.map((a) => {
       const bal = d.balances[a.id] || 0;
       const balClass = bal < 0 ? "pos" : "neu";
@@ -481,17 +476,7 @@
         "</div>" +
       "</div>";
     }).join("");
-    if (!cardsHtml) cardsHtml = '<div class="empty-msg">No accounts yet.</div>';
-    // Distinct ids from the desktop add-row above (newAccountNameM/newAccountOpeningM, not
-    // newAccountName/newAccountOpening) — both copies are always in the DOM at once, and a
-    // duplicate id would make getElementById silently return the desktop one even on mobile.
-    // The add-account handler below picks the right pair via the same MOBILE_MQ flag used
-    // elsewhere in this file.
-    cardsHtml += '<div class="acct-add-card">' +
-      '<div class="field"><label>New Account Name</label><input class="cell-input name-input" id="newAccountNameM" placeholder="e.g. SAVINGS"></div>' +
-      '<div class="field" style="margin-top:8px;"><label>Opening Balance</label><input class="cell-input" type="number" id="newAccountOpeningM" placeholder="0"></div>' +
-      '<button class="btn primary" style="color:#fff;" data-action="add-account">+ Add Account</button>' +
-    "</div>";
+    if (!cardsHtml) cardsHtml = '<div class="empty-msg">No accounts yet — add one from Manage ▾.</div>';
     document.getElementById("accountsCards").innerHTML = cardsHtml;
   }
 
@@ -1442,7 +1427,6 @@
       document.getElementById("btnClearMonth").click();
     });
 
-    document.getElementById("btnAddTxn").addEventListener("click", openAddTxnModal);
     document.getElementById("fabAddTxn").addEventListener("click", openAddTxnModal);
     document.getElementById("addTxnCancel").addEventListener("click", () => {
       document.getElementById("addTxnBackdrop").classList.remove("show");
@@ -1567,6 +1551,16 @@
     document.getElementById("btnExportXlsx").addEventListener("click", () => {
       exportXLSX(tracker(), "FinTrack_Tracker_" + todayStr() + ".xlsx");
       toast("Excel file exported.");
+    });
+
+    document.getElementById("btnAddAccount").addEventListener("click", () => {
+      document.getElementById("newAccountName").value = "";
+      document.getElementById("newAccountOpening").value = "";
+      document.getElementById("addAccountBackdrop").classList.add("show");
+      document.getElementById("newAccountName").focus();
+    });
+    document.getElementById("addAccountCancel").addEventListener("click", () => {
+      document.getElementById("addAccountBackdrop").classList.remove("show");
     });
 
     document.getElementById("btnManageCategories").addEventListener("click", () => {
@@ -1771,16 +1765,14 @@
       if (action === "next-month") { shiftMonth(1); return; }
 
       if (action === "add-account") {
-        // Two add-row copies exist (desktop table row + mobile card, see renderAccounts) —
-        // only one is visible at a time, chosen the same way the month bar picks its home.
-        const nameId = MOBILE_MQ.matches ? "newAccountNameM" : "newAccountName";
-        const openId = MOBILE_MQ.matches ? "newAccountOpeningM" : "newAccountOpening";
-        const name = document.getElementById(nameId).value.trim();
+        const name = document.getElementById("newAccountName").value.trim();
         if (!name) { toast("Enter a name for the new account."); return; }
-        const opening = parseFloat(document.getElementById(openId).value) || 0;
+        const opening = parseFloat(document.getElementById("newAccountOpening").value) || 0;
         tracker().accounts.push({ id: uid("acct"), name, openingBalance: opening, openingBalances: {} });
         persist();
         renderAll();
+        document.getElementById("addAccountBackdrop").classList.remove("show");
+        toast("Account added.");
         return;
       }
       if (action === "copy-previous-balances") {
