@@ -17,7 +17,15 @@
   "use strict";
 
   const STORAGE_KEY = "fintrack_portfolio_v1"; // same blob as app.js — see load()/persist() below
-  const PALETTE = ["#4f46e5", "#0ea5a4", "#f59e0b", "#ef4444", "#8b5cf6", "#0f9d58", "#0284c7", "#d946ef", "#84cc16", "#f97316"];
+
+  // Categorical chart palette — read live from shared.css's --chart-1..8 (validated per-theme
+  // there, see that file), never hardcoded here, so swatches/donuts pick up the right values in
+  // both light and dark without a separate light/dark array to keep in sync. Pass an existing
+  // CSSStyleDeclaration when the caller already has one (avoids a redundant computed-style read).
+  function getPalette(cs) {
+    const styles = cs || getComputedStyle(document.documentElement);
+    return [1, 2, 3, 4, 5, 6, 7, 8].map((n) => styles.getPropertyValue("--chart-" + n).trim());
+  }
 
   // Theme toggle logic lives in theme.js (shared with index.html). It calls window.onThemeChange
   // after every change, since Chart.js bakes colors in at creation time and needs an explicit
@@ -530,7 +538,8 @@
       return;
     }
     // Top-level accent bar color matches that group's own color in the "By Top-Level Category"
-    // chart (same PALETTE, same index order) — see renderCharts() below.
+    // chart (same palette, same index order) — see renderCharts() below.
+    const palette = getPalette();
     const topLevelIds = tracker().categories.filter((c) => !c.parentId).map((c) => c.id);
     let i = 0;
     let totalActual = 0, totalBudget = 0;
@@ -538,7 +547,7 @@
     const cardParts = [];
     d.budgetGroups.forEach((g) => {
       const topIdx = topLevelIds.indexOf(g.topLevel.id);
-      const topColor = PALETTE[(topIdx < 0 ? 0 : topIdx) % PALETTE.length];
+      const topColor = palette[(topIdx < 0 ? 0 : topIdx) % palette.length];
       tableParts.push('<tr class="budget-group-head"><td colspan="4"><span class="accent-bar" style="background:' + topColor + '"></span>' + escapeHtml(g.topLevel.name) + "</td></tr>");
       let gActual = 0, gBudget = 0;
       const subParts = [];
@@ -559,13 +568,13 @@
           totalActual += row.actual;
         }
         tableParts.push("<tr>" +
-          '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + PALETTE[idx % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
+          '<td class="left"><div class="name-cell"><span class="swatch" style="background:' + palette[idx % palette.length] + '"></span>' + escapeHtml(row.category.name) + "</div></td>" +
           "<td>" + budgetInput + "</td>" +
           '<td class="' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</td>" +
           '<td style="min-width:110px;">' + bar + "</td>" +
           "</tr>");
         subParts.push('<div class="brow-m"><div class="brow-line">' +
-          '<span class="brow-name"><span class="swatch" style="background:' + PALETTE[idx % PALETTE.length] + '"></span>' + escapeHtml(row.category.name) + "</span>" +
+          '<span class="brow-name"><span class="swatch" style="background:' + palette[idx % palette.length] + '"></span>' + escapeHtml(row.category.name) + "</span>" +
           '<span class="brow-actual ' + (over ? "pos" : "neu") + '">' + fmtINR(row.actual) + "</span>" + budgetInput +
           "</div>" + bar + "</div>");
       });
@@ -591,6 +600,7 @@
     const cs = getComputedStyle(document.documentElement);
     const mutedColor = cs.getPropertyValue("--muted").trim();
     const cardBg = cs.getPropertyValue("--card").trim();
+    const palette = getPalette(cs);
 
     function draw(existing, canvasId, labels, data, colors) {
       const ctx = document.getElementById(canvasId).getContext("2d");
@@ -612,14 +622,14 @@
     const topLabels = [], topData = [], topColors = [];
     tracker().categories.filter((c) => !c.parentId).forEach((c, i) => {
       const amt = d.spendByTopLevel[c.id] || 0;
-      if (amt > 0 && !excl.topLevel.includes(c.id)) { topLabels.push(c.name); topData.push(amt); topColors.push(PALETTE[i % PALETTE.length]); }
+      if (amt > 0 && !excl.topLevel.includes(c.id)) { topLabels.push(c.name); topData.push(amt); topColors.push(palette[i % palette.length]); }
     });
     chartTopLevel = draw(chartTopLevel, "chartTopLevel", topLabels, topData, topColors);
 
     const subLabels = [], subData = [], subColors = [];
     tracker().categories.filter((c) => isLeafCategory(c) && !c.archived).forEach((c, i) => {
       const amt = d.spendBySub[c.id] || 0;
-      if (amt > 0 && !excl.category.includes(c.id)) { subLabels.push(c.name); subData.push(amt); subColors.push(PALETTE[i % PALETTE.length]); }
+      if (amt > 0 && !excl.category.includes(c.id)) { subLabels.push(c.name); subData.push(amt); subColors.push(palette[i % palette.length]); }
     });
     chartCategory = draw(chartCategory, "chartCategory", subLabels, subData, subColors);
   }
@@ -776,6 +786,7 @@
     const cs = getComputedStyle(document.documentElement);
     const mutedColor = cs.getPropertyValue("--muted").trim();
     const gridColor = cs.getPropertyValue("--row-line").trim();
+    const palette = getPalette(cs);
 
     // Each series keeps one consistent color everywhere it appears — chart bars, legend swatch,
     // and the table cells below — rather than swapping per-bar, which made the legend (one fixed
@@ -783,7 +794,7 @@
     const colorById = {};
     data.series.forEach((s) => {
       const idx = idIndex.indexOf(s.category.id);
-      colorById[s.category.id] = PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+      colorById[s.category.id] = palette[(idx < 0 ? 0 : idx) % palette.length];
     });
 
     if (overviewChart) { overviewChart.destroy(); overviewChart = null; }

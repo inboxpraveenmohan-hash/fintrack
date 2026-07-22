@@ -7,7 +7,15 @@
 
   const STORAGE_KEY = "fintrack_portfolio_v1";
   const DEVIATION_THRESHOLD = 2; // percentage points before flagging "off target"
-  const PALETTE = ["#4f46e5", "#0ea5a4", "#f59e0b", "#ef4444", "#8b5cf6", "#0f9d58", "#0284c7", "#d946ef", "#84cc16", "#f97316"];
+
+  // Categorical chart palette — read live from shared.css's --chart-1..8 (validated per-theme
+  // there, see that file), never hardcoded here, so swatches/donuts pick up the right values in
+  // both light and dark without a separate light/dark array to keep in sync. Pass an existing
+  // CSSStyleDeclaration when the caller already has one (avoids a redundant computed-style read).
+  function getPalette(cs) {
+    const styles = cs || getComputedStyle(document.documentElement);
+    return [1, 2, 3, 4, 5, 6, 7, 8].map((n) => styles.getPropertyValue("--chart-" + n).trim());
+  }
 
   // Theme toggle logic lives in theme.js (shared with tracker.html). It calls
   // window.onThemeChange after every change, since Chart.js bakes colors in at creation time
@@ -304,10 +312,11 @@
 
   function renderAllocationTable(d) {
     const rows = [];
+    const palette = getPalette();
     state.assetClasses.forEach((ac, acIdx) => {
       const isOpen = expanded.has(ac.id);
       const devClass = ac.deviation > DEVIATION_THRESHOLD ? "pos" : ac.deviation < -DEVIATION_THRESHOLD ? "neg" : "neu";
-      const color = PALETTE[acIdx % PALETTE.length];
+      const color = palette[acIdx % palette.length];
       rows.push(
         '<tr class="class-row" data-toggle="' + ac.id + '">' +
           '<td class="left"><div class="name-cell"><span class="chevron' + (isOpen ? " open" : "") + '">▶</span>' +
@@ -392,10 +401,11 @@
   // table (put on .ac-head only, never the outer .ac-card, so a click inside the expanded body —
   // e.g. focusing a holding's value input — doesn't also collapse the card).
   function renderAllocationCards(d) {
+    const palette = getPalette();
     const cardsHtml = state.assetClasses.map((ac, acIdx) => {
       const isOpen = expanded.has(ac.id);
       const devClass = ac.deviation > DEVIATION_THRESHOLD ? "pos" : ac.deviation < -DEVIATION_THRESHOLD ? "neg" : "neu";
-      const color = PALETTE[acIdx % PALETTE.length];
+      const color = palette[acIdx % palette.length];
       let body = "";
       if (isOpen) {
         const sipPctSum = ac.holdings.reduce((s, h) => s + (Number(h.sipPct) || 0), 0);
@@ -554,11 +564,12 @@
     const cardBg = cssVar("--card");
     const mutedColor = cssVar("--muted");
     const gridColor = cssVar("--border");
+    const palette = getPalette(cs);
 
     const labels = state.assetClasses.map((a) => a.name);
     const targetData = state.assetClasses.map((a) => a.targetPct);
     const currentData = state.assetClasses.map((a) => a.currentPct);
-    const colors = state.assetClasses.map((a, i) => PALETTE[i % PALETTE.length]);
+    const colors = state.assetClasses.map((a, i) => palette[i % palette.length]);
 
     const ctx1 = document.getElementById("chartAllocation").getContext("2d");
     if (chartAllocation) chartAllocation.destroy();
@@ -583,7 +594,7 @@
 
     const nwLabels = [...labels, ...state.otherAssets.map((o) => o.name)];
     const nwData = [...state.assetClasses.map((a) => a.currentValue), ...state.otherAssets.map((o) => Number(o.currentValue) || 0)];
-    const nwColors = [...colors, ...state.otherAssets.map((_, i) => PALETTE[(state.assetClasses.length + i) % PALETTE.length])];
+    const nwColors = [...colors, ...state.otherAssets.map((_, i) => palette[(state.assetClasses.length + i) % palette.length])];
 
     const ctx2 = document.getElementById("chartNetWorth").getContext("2d");
     if (chartNetWorth) chartNetWorth.destroy();

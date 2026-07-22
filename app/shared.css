@@ -2,6 +2,17 @@
    Linked by every page (index.html, tracker.html). Page-specific styles (e.g. index.html's
    CDSL-sync-modal rules) stay inline in that page instead of living here. */
 
+/* Chart categorical palette (8 slots, cycled for >8 series) — validated with the data-viz
+   skill's contrast/CVD checker against this file's own --card surfaces in both modes
+   (`validate_palette.py "<hexes>" --mode light --surface #ffffff` /
+   `--mode dark --surface #13141f`), not eyeballed. The old flat 10-hex array (shared, same
+   values in both themes) failed light mode hard: 4 of its colors sat under 3:1 contrast on a
+   white/lavender card, reading as washed-out slices in the Ledger's donut charts — the dark
+   version of the same array was fine, which is why the bug only showed up in light mode. Slot
+   order is the CVD-safety mechanism (derived by maximizing minimum adjacent ΔE) — don't reorder
+   without re-running the validator. Light still carries a WARN on 3 slots (magenta/yellow/aqua,
+   ~2.7-2.9:1) that's accepted per the skill's relief rule since every chart these feed already
+   ships a legend with the category name directly beside each swatch. */
 :root{
   color-scheme:light;
   --bg:#eef0fa; --card:#ffffff; --border:#d8dcf0; --text:#0f1222; --muted:#565b78;
@@ -9,6 +20,9 @@
   --chart-target:#e0e2fa;
   --green:#0f9d58; --green-bg:#e8f7ee; --red:#d93025; --red-bg:#fdecea;
   --amber:#b8860b; --amber-bg:#fdf6e3; --blue:#0ea5e9; --blue-bg:#e5f6fd;
+  --accent:#fab219;
+  --chart-1:#2a78d6; --chart-2:#008300; --chart-3:#e87ba4; --chart-4:#eda100;
+  --chart-5:#1baf7a; --chart-6:#eb6834; --chart-7:#4a3aa7; --chart-8:#e34948;
   --row-line:#f0f2f8; --row-tint:#fafbfe;
   --shadow:0 1px 2px rgba(20,20,43,.04), 0 4px 16px rgba(20,20,43,.06);
   --radius:12px;
@@ -21,6 +35,9 @@
     --chart-target:#4a4488;
     --green:#3ddc84; --green-bg:#14301f; --red:#ff6b6b; --red-bg:#3a1f22;
     --amber:#f0c419; --amber-bg:#3a2f12; --blue:#38bdf8; --blue-bg:#132a38;
+    --accent:#f0c419;
+    --chart-1:#3987e5; --chart-2:#008300; --chart-3:#d55181; --chart-4:#c98500;
+    --chart-5:#199e70; --chart-6:#d95926; --chart-7:#9085e9; --chart-8:#e66767;
     --row-line:#1f2233; --row-tint:#181a28;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.35);
   }
@@ -32,6 +49,9 @@
   --chart-target:#4a4488;
   --green:#3ddc84; --green-bg:#14301f; --red:#ff6b6b; --red-bg:#3a1f22;
   --amber:#f0c419; --amber-bg:#3a2f12; --blue:#38bdf8; --blue-bg:#132a38;
+  --accent:#f0c419;
+  --chart-1:#3987e5; --chart-2:#008300; --chart-3:#d55181; --chart-4:#c98500;
+  --chart-5:#199e70; --chart-6:#d95926; --chart-7:#9085e9; --chart-8:#e66767;
   --row-line:#1f2233; --row-tint:#181a28;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.35);
 }
@@ -42,6 +62,9 @@
   --chart-target:#e0e2fa;
   --green:#0f9d58; --green-bg:#e8f7ee; --red:#d93025; --red-bg:#fdecea;
   --amber:#b8860b; --amber-bg:#fdf6e3; --blue:#0ea5e9; --blue-bg:#e5f6fd;
+  --accent:#fab219;
+  --chart-1:#2a78d6; --chart-2:#008300; --chart-3:#e87ba4; --chart-4:#eda100;
+  --chart-5:#1baf7a; --chart-6:#eb6834; --chart-7:#4a3aa7; --chart-8:#e34948;
   --row-line:#f0f2f8; --row-tint:#fafbfe;
   --shadow:0 1px 2px rgba(20,20,43,.04), 0 4px 16px rgba(20,20,43,.06);
 }
@@ -80,10 +103,14 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;flex
 .btn.danger:hover{border-color:var(--red);color:var(--red);}
 /* Bright, distinct accent for a single button that should stand out from the rest of the
    toolbar (e.g. Overview) — deliberately not reusing .primary's indigo, which already means
-   "the main action" elsewhere (Import). Dark text throughout since --amber swings from a deep
-   gold in light mode to a near-yellow in dark mode — white text would fail contrast on the latter. */
-.btn.accent{background:var(--amber);border-color:var(--amber);color:#1c2333;}
-.btn.accent:hover{background:var(--amber);border-color:var(--amber);color:#1c2333;opacity:.85;}
+   "the main action" elsewhere (Import). Its own --accent token, not --amber: --amber also
+   colors small warning TEXT (badges, hints) on a light background, so it has to stay muted
+   enough to read as text (~3:1 max) — a button FILL wants the opposite, a saturated color
+   that pops behind dark text, so light mode needs a genuinely different value here (dark
+   mode's amber was already vivid enough to double as both). Dark text throughout since both
+   accent values are light/warm — white text would fail contrast on either. */
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#1c2333;}
+.btn.accent:hover{background:var(--accent);border-color:var(--accent);color:#1c2333;opacity:.85;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 input[type=file]{display:none;}
 
