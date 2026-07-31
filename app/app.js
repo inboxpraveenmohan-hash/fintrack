@@ -231,6 +231,8 @@
     const otherTotal = data.otherAssets.reduce((s, o) => s + (Number(o.currentValue) || 0), 0);
     const netWorth = totalAssets + otherTotal;
     const monthlyInvestment = Number(data.monthlyInvestment) || 0;
+    const otherMonthlyTotal = data.otherAssets.reduce((s, o) => s + (Number(o.monthlyContribution) || 0), 0);
+    const totalMonthlyInvestment = monthlyInvestment + otherMonthlyTotal;
     const sipMode = data.sipMode || "target";
 
     data.assetClasses.forEach((ac) => {
@@ -267,7 +269,7 @@
     const sipAllocPctSum = data.assetClasses.reduce((s, ac) => s + (Number(ac.sipAllocPct) || 0), 0);
     const offTargetCount = data.assetClasses.filter((ac) => Math.abs(ac.deviation) > DEVIATION_THRESHOLD).length;
 
-    return { totalAssets, otherTotal, netWorth, monthlyInvestment, targetPctSum, sipAllocPctSum, offTargetCount, sipMode };
+    return { totalAssets, otherTotal, netWorth, monthlyInvestment, otherMonthlyTotal, totalMonthlyInvestment, targetPctSum, sipAllocPctSum, offTargetCount, sipMode };
   }
 
   // ---------- formatting ----------
@@ -299,7 +301,7 @@
       card("Net Worth", fmtINR(d.netWorth)),
       card("Total Investments", fmtINR(d.totalAssets), '<span class="hint">Across ' + state.assetClasses.length + " asset classes</span>"),
       card("Other Assets", fmtINR(d.otherTotal), '<span class="hint">' + otherItemCount + " items (bonds, chit, NPS, gold…)</span>"),
-      card("Monthly SIP / Investment", fmtINR(d.monthlyInvestment), offMsg)
+      card("Monthly Investment", fmtINR(d.totalMonthlyInvestment), offMsg)
     ].join("");
 
     const updatedDisplay = document.getElementById("updatedDisplay");
@@ -1557,6 +1559,115 @@
     toast(state.priceWorkerUrl ? "Worker URL saved — stock quotes are enabled." : "Worker URL cleared — only mutual fund NAVs will refresh.");
   }
 
+  // ---------- SIP simulation modal ----------
+  // Scratch preview of "what would this month's SIP do to each asset class" — never touches
+  // `state` (and is never persisted) until the user explicitly clicks Apply. Rebuilt fresh from
+  // the real portfolio every time the modal opens, so stale edits never carry over between opens.
+  let simState = null;
+
+  function buildSimStateFromCurrent() {
+    computeDerived(state); // refreshes ac.currentValue/targetPct/sipAllocPct on state.assetClasses
+    return {
+      monthlyInvestment: Number(state.monthlyInvestment) || 0,
+      classes: state.assetClasses.map((ac) => ({
+        id: ac.id,
+        name: ac.name,
+        currentValue: ac.currentValue,
+        targetPct: Number(ac.targetPct) || 0,
+        sipAllocPct: Number(ac.sipAllocPct) || 0
+      }))
+    };
+  }
+
+  function openSimModal() {
+    simState = buildSimStateFromCurrent();
+    document.getElementById("simApplyAmount").checked = true;
+    document.getElementById("simApplyPct").checked = true;
+    document.getElementById("simSipBackdrop").classList.add("show");
+    renderSimModal();
+  }
+
+  function closeSimModal() {
+    document.getElementById("simSipBackdrop").classList.remove("show");
+  }
+
+  function renderSimModal() {
+    if (!simState) return;
+    const palette = getPalette();
+    const totalAssets = simState.classes.reduce((s, c) => s + c.currentValue, 0);
+    const totalSip = Number(simState.monthlyInvestment) || 0;
+    const projectedTotal = totalAssets + totalSip;
+    const pctSum = simState.classes.reduce((s, c) => s + (Number(c.sipAllocPct) || 0), 0);
+
+    const inputRows = simState.classes.map((c, i) => {
+      const color = palette[i % palette.length];
+      const sipAmount = ((Number(c.sipAllocPct) || 0) / 100) * totalSip;
+      return (
+        '<div class="class-input-row">' +
+          '<div class="class-input-top">' +
+            '<span class="swatch" style="background:' + color + '"></span>' +
+            '<label title="' + escapeAttr(c.name) + '">' + escapeHtml(c.name) + "</label>" +
+            '<input class="cell-input small" type="number" step="0.1" min="0" data-sim-class-id="' + c.id + '" value="' + numOr0(c.sipAllocPct) + '">%' +
+          "</div>" +
+          '<div class="class-input-amt">→ ' + fmtINR(sipAmount) + " this month</div>" +
+        "</div>"
+      );
+    });
+
+    const barRows = simState.classes.map((c, i) => {
+      const sipAmount = ((Number(c.sipAllocPct) || 0) / 100) * totalSip;
+      const projectedValue = c.currentValue + sipAmount;
+      const projectedPct = projectedTotal ? (projectedValue / projectedTotal) * 100 : 0;
+      const delta = projectedPct - c.targetPct;
+      const devClass = delta > DEVIATION_THRESHOLD ? "pos" : delta < -DEVIATION_THRESHOLD ? "neg" : "neu";
+      const color = palette[i % palette.length];
+      const barWidth = Math.max(0, Math.min(100, projectedPct));
+      const tickPos = Math.max(0, Math.min(100, Number(c.targetPct) || 0));
+      return (
+        '<div class="sim-bar-row">' +
+          '<div class="sim-bar-head">' +
+            '<span class="name"><span class="swatch" style="background:' + color + '"></span><span class="txt">' + escapeHtml(c.name) + "</span></span>" +
+            '<span class="nums ' + devClass + '">' + fmtINR(projectedValue) + " · " + fmtPct(projectedPct) + " (target " + fmtPct(c.targetPct) + ")</span>" +
+          "</div>" +
+          '<div class="sim-bar-track"><div class="sim-bar-fill" style="width:' + barWidth + '%;background:' + color + '"></div><div class="sim-bar-target-tick" style="left:' + tickPos + '%"></div></div>' +
+        "</div>"
+      );
+    });
+
+    document.getElementById("simClassInputs").innerHTML = inputRows.length ? inputRows.join("") : '<p class="pl-hint">No asset classes yet.</p>';
+    document.getElementById("simBarsList").innerHTML = barRows.join("");
+    document.getElementById("simMonthlyAmount").value = numOr0(simState.monthlyInvestment);
+    document.getElementById("simTotalValue").textContent = fmtINR(projectedTotal);
+
+    const pctBadge = document.getElementById("simPctBadge");
+    const pctOk = Math.abs(pctSum - 100) < 0.01;
+    pctBadge.textContent = "SIP % total: " + pctSum.toFixed(0) + "%";
+    pctBadge.className = "badge " + (pctOk ? "ok" : "warn");
+
+    document.getElementById("simApplyAmountHint").textContent =
+      "(" + fmtINR(state.monthlyInvestment) + " → " + fmtINR(simState.monthlyInvestment) + ")";
+  }
+
+  function applySimToPortfolio() {
+    if (!simState) return;
+    const applyAmount = document.getElementById("simApplyAmount").checked;
+    const applyPct = document.getElementById("simApplyPct").checked;
+    if (!applyAmount && !applyPct) { toast("Check at least one box to apply."); return; }
+
+    if (applyAmount) state.monthlyInvestment = Number(simState.monthlyInvestment) || 0;
+    if (applyPct) {
+      state.sipMode = "manual";
+      simState.classes.forEach((sc) => {
+        const ac = findClass(sc.id);
+        if (ac) ac.manualSipPct = Number(sc.sipAllocPct) || 0;
+      });
+    }
+    persist();
+    renderAll();
+    closeSimModal();
+    toast("Applied to portfolio.");
+  }
+
   // ---------- event wiring ----------
   document.addEventListener("DOMContentLoaded", () => {
     if (migrated) {
@@ -1681,6 +1792,24 @@
     document.getElementById("psTestBtn").addEventListener("click", testWorkerConnection);
     document.getElementById("psCancel").addEventListener("click", () => document.getElementById("priceSettingsBackdrop").classList.remove("show"));
     document.getElementById("psSave").addEventListener("click", savePriceSettings);
+
+    // SIP simulation modal
+    document.getElementById("btnSimulateSip").addEventListener("click", openSimModal);
+    document.getElementById("simClose").addEventListener("click", closeSimModal);
+    document.getElementById("simReset").addEventListener("click", () => { simState = buildSimStateFromCurrent(); renderSimModal(); });
+    document.getElementById("simApply").addEventListener("click", applySimToPortfolio);
+    document.getElementById("simMonthlyAmount").addEventListener("change", (e) => {
+      if (!simState) return;
+      simState.monthlyInvestment = parseFloat(e.target.value) || 0;
+      renderSimModal();
+    });
+    document.getElementById("simClassInputs").addEventListener("change", (e) => {
+      const t = e.target;
+      if (!simState || !t.dataset.simClassId) return;
+      const sc = simState.classes.find((c) => c.id === t.dataset.simClassId);
+      if (sc) sc.sipAllocPct = parseFloat(t.value) || 0;
+      renderSimModal();
+    });
 
     document.getElementById("fabAdd").addEventListener("click", openAddModal);
     document.getElementById("addCancel").addEventListener("click", () => document.getElementById("addBackdrop").classList.remove("show"));
