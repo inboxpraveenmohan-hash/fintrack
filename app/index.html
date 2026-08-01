@@ -113,10 +113,13 @@
   .hrow-m .hrow-bottom .amount{flex:1;min-width:0;}
   .hrow-m .hrow-bottom .sipwrap{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);white-space:nowrap;}
   .hrow-m .hrow-bottom .small{width:48px;}
-  .oa-simple-card{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--row-line);}
+  .oa-simple-card{padding:10px 14px;border-bottom:1px solid var(--row-line);}
   .oa-simple-card:last-child{border-bottom:none;}
-  .oa-simple-card .name-input{flex:1 1 100px;min-width:0;font-weight:600;}
-  .oa-simple-card .amount{width:84px;}
+  .oa-simple-top{display:flex;align-items:center;gap:8px;}
+  .oa-simple-top .name-input{flex:1;min-width:0;font-weight:600;}
+  .oa-simple-bottom{display:flex;gap:16px;margin-top:6px;padding-left:1px;}
+  .oa-simple-field{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);}
+  .oa-simple-field .amount{width:74px;}
 
   /* ---------- Persistent "+ Add" button — labeled pill on desktop, plain circular FAB on
      mobile (icon-only, thumb-reachable bottom-right). Same element/handler both layouts; the

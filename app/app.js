@@ -516,10 +516,15 @@
       const isGroup = Array.isArray(o.holdings);
       if (!isGroup) {
         html += '<div class="oa-simple-card">' +
-          '<input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '">' +
-          '<input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '">' +
-          '<button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
-          '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button>' +
+          '<div class="oa-simple-top">' +
+            '<input class="cell-input name-input" data-type="other" data-id="' + o.id + '" data-field="name" value="' + escapeAttr(o.name) + '">' +
+            '<button class="icon-btn move-btn" data-action="move-other-to-class" data-id="' + o.id + '" title="Move to Asset Allocation">⇄</button>' +
+            '<button class="icon-btn" data-action="delete-other" data-id="' + o.id + '" title="Delete">✕</button>' +
+          "</div>" +
+          '<div class="oa-simple-bottom">' +
+            '<label class="oa-simple-field">Value<input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="currentValue" value="' + numOr0(o.currentValue) + '"></label>' +
+            '<label class="oa-simple-field">Monthly<input class="cell-input amount" type="number" data-type="other" data-id="' + o.id + '" data-field="monthlyContribution" value="' + numOr0(o.monthlyContribution) + '"></label>' +
+          "</div>" +
         "</div>";
         return;
       }
