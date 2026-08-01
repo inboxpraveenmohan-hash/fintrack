@@ -190,6 +190,10 @@
   let selectedMonth = todayStr().slice(0, 7);
   let searchQuery = "";
   let filterCategoryId = "";
+  let filterAccountId = "";
+  let filterDirection = ""; // "" | "in" | "out"
+  let filterDateFrom = "";
+  let filterDateTo = "";
   let sortOrder = "newest"; // "newest" | "oldest"
   let chartTopLevel = null;
   let chartCategory = null;
@@ -883,6 +887,10 @@
       return sortOrder === "oldest" ? -newerFirst : newerFirst;
     });
     if (filterCategoryId) rows = rows.filter((t) => categoryMatchesFilter(t.categoryId, filterCategoryId));
+    if (filterAccountId) rows = rows.filter((t) => t.accountId === filterAccountId);
+    if (filterDirection) rows = rows.filter((t) => t.direction === filterDirection);
+    if (filterDateFrom) rows = rows.filter((t) => t.date >= filterDateFrom);
+    if (filterDateTo) rows = rows.filter((t) => t.date <= filterDateTo);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((t) => t.item.toLowerCase().includes(q));
@@ -904,7 +912,8 @@
         "</tr>";
     }).join("");
 
-    const emptyMsg = "No transactions " + (searchQuery || filterCategoryId ? "match your search/filter" : "this month") + ".";
+    const anyFilterActive = searchQuery || filterCategoryId || filterAccountId || filterDirection || filterDateFrom || filterDateTo;
+    const emptyMsg = "No transactions " + (anyFilterActive ? "match your search/filter" : "this month") + ".";
     document.getElementById("txnBody").innerHTML =
       rowsHtml || ('<tr><td colspan="7" class="empty-msg">' + emptyMsg + "</td></tr>");
 
@@ -1015,6 +1024,19 @@
     const selM = document.getElementById("txnFilterCategoryM");
     selM.innerHTML = optionsHtml;
     selM.value = filterCategoryId;
+
+    // Account filter: same dual-element (desktop table header + mobile toolbar), same
+    // repopulate-and-restore-selection treatment, since accounts can be added/deleted.
+    const acctOptionsHtml = '<option value="">All</option>' +
+      tracker().accounts.map((a) => '<option value="' + a.id + '">' + escapeHtml(a.name) + "</option>").join("");
+    const acctSel = document.getElementById("txnFilterAccount");
+    const acctCurrent = acctSel.value;
+    acctSel.innerHTML = acctOptionsHtml;
+    acctSel.value = acctCurrent;
+    filterAccountId = acctSel.value;
+    const acctSelM = document.getElementById("txnFilterAccountM");
+    acctSelM.innerHTML = acctOptionsHtml.replace('<option value="">All</option>', '<option value="">All accounts</option>');
+    acctSelM.value = filterAccountId;
   }
 
   function parentSelectOptions(categories, selectedParentId, excludeId) {
@@ -1472,6 +1494,30 @@
       txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
+    document.getElementById("txnFilterAccountM").addEventListener("change", (e) => {
+      filterAccountId = e.target.value;
+      document.getElementById("txnFilterAccount").value = filterAccountId;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDirectionM").addEventListener("change", (e) => {
+      filterDirection = e.target.value;
+      document.getElementById("txnFilterDirection").value = filterDirection;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDateFromM").addEventListener("change", (e) => {
+      filterDateFrom = e.target.value;
+      document.getElementById("txnFilterDateFrom").value = filterDateFrom;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDateToM").addEventListener("change", (e) => {
+      filterDateTo = e.target.value;
+      document.getElementById("txnFilterDateTo").value = filterDateTo;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
 
     document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -1666,6 +1712,30 @@
     document.getElementById("txnFilterCategory").addEventListener("change", (e) => {
       filterCategoryId = e.target.value;
       document.getElementById("txnFilterCategoryM").value = filterCategoryId;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterAccount").addEventListener("change", (e) => {
+      filterAccountId = e.target.value;
+      document.getElementById("txnFilterAccountM").value = filterAccountId;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDirection").addEventListener("change", (e) => {
+      filterDirection = e.target.value;
+      document.getElementById("txnFilterDirectionM").value = filterDirection;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDateFrom").addEventListener("change", (e) => {
+      filterDateFrom = e.target.value;
+      document.getElementById("txnFilterDateFromM").value = filterDateFrom;
+      txnCardLimit = TXN_CARD_CHUNK;
+      renderTransactions(computeDerivedTracker());
+    });
+    document.getElementById("txnFilterDateTo").addEventListener("change", (e) => {
+      filterDateTo = e.target.value;
+      document.getElementById("txnFilterDateToM").value = filterDateTo;
       txnCardLimit = TXN_CARD_CHUNK;
       renderTransactions(computeDerivedTracker());
     });
