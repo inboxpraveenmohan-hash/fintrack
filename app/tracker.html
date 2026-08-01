@@ -85,7 +85,7 @@
   /* ---------- Other mobile helpers, hidden on desktop ---------- */
   .cal-btn{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:5px;border-radius:6px;line-height:0;}
   .cal-btn:hover{color:var(--primary);background:var(--row-tint);}
-  #txnFilterCategoryM{display:none;}
+  #txnFilterCategoryM,#txnFilterAccountM,#txnFilterDirectionM,#txnFilterDateFromM,#txnFilterDateToM{display:none;}
   /* .msec-title gets NO desktop rule — it's a plain inline span there, identical to unwrapped
      text; it only becomes a grid cell under the mobile query below. */
   .msec-head{display:none;}
@@ -195,11 +195,20 @@
        control, on both layouts — see the base .fab rule above) */
     #txnTable{display:none;}
     .txn-cards{display:block;}
-    #txnFilterCategoryM{display:inline-block;}
-    /* Compact controls: full-width search, one row of selects, Clear Month behind ⋯ */
+    #txnFilterCategoryM,#txnFilterAccountM,#txnFilterDirectionM,#txnFilterDateFromM,#txnFilterDateToM{display:inline-block;}
+    /* Compact controls: full-width search, then paired-up selects/inputs wrapping one row at a
+       time — Sort+Category, Account+In/Out, then the From/To date range — Clear Month behind ⋯ */
     #txnControls{width:100%;gap:8px;}
     #txnSearch{flex:1 1 100%;width:auto;}
-    #txnSortOrder,#txnFilterCategoryM{flex:1 1 0;min-width:0;}
+    /* flex-basis 140px (not 0) is load-bearing: it's what makes wrapping happen at all. At
+       basis 0 + min-width:0 (the old rule), flexbox just shrinks all six controls to fit one
+       unreadable row instead of wrapping — wrapping only kicks in once items refuse to shrink
+       past a real size, so two fit per row and a third pushes to the next. min-width:0 still
+       has to come along, though: without it, a <select>'s content-based auto-minimum (driven by
+       its LONGEST <option> text, e.g. Category's "Rent & Maintenance") inflates that one
+       control's hypothetical size past half the row, breaking the pairing asymmetrically — with
+       it, every control's wrap-line math uses the same clean 140px regardless of option text. */
+    #txnSortOrder,#txnFilterCategoryM,#txnFilterAccountM,#txnFilterDirectionM,#txnFilterDateFromM,#txnFilterDateToM{flex:1 1 140px;min-width:0;}
     #btnClearMonth{display:none;}
     .log-more{display:block;}
     #logMoreMenu{right:0;left:auto;}
@@ -358,6 +367,16 @@
         <select class="cell-input" id="txnFilterCategoryM" style="width:auto;">
           <option value="">All</option>
         </select>
+        <select class="cell-input" id="txnFilterAccountM" style="width:auto;">
+          <option value="">All accounts</option>
+        </select>
+        <select class="cell-input" id="txnFilterDirectionM" style="width:auto;">
+          <option value="">All in/out</option>
+          <option value="in">In</option>
+          <option value="out">Out</option>
+        </select>
+        <input type="date" class="cell-input" id="txnFilterDateFromM" style="width:auto;" title="From date">
+        <input type="date" class="cell-input" id="txnFilterDateToM" style="width:auto;" title="To date">
         <button class="btn danger" id="btnClearMonth" title="Delete every transaction and transfer in the currently viewed month">Clear Month</button>
         <div class="menu-wrap log-more">
           <button class="btn" data-menu-toggle="logMoreMenu" title="More actions">⋯</button>
@@ -371,7 +390,13 @@
       <table id="txnTable">
         <thead>
           <tr>
-            <th class="left">Date</th>
+            <th class="left">
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <span>Date</span>
+                <input type="date" class="cell-input" id="txnFilterDateFrom" style="width:120px;font-size:10px;padding:2px 4px;font-weight:400;" title="From date">
+                <input type="date" class="cell-input" id="txnFilterDateTo" style="width:120px;font-size:10px;padding:2px 4px;font-weight:400;" title="To date">
+              </div>
+            </th>
             <th class="left">Item</th>
             <th class="left">
               <div style="display:flex;flex-direction:column;gap:3px;">
@@ -381,8 +406,24 @@
                 </select>
               </div>
             </th>
-            <th class="left">Account</th>
-            <th>In / Out</th>
+            <th class="left">
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <span>Account</span>
+                <select class="cell-input" id="txnFilterAccount" style="width:auto;font-size:10px;padding:2px 4px;font-weight:400;text-transform:none;letter-spacing:normal;">
+                  <option value="">All</option>
+                </select>
+              </div>
+            </th>
+            <th>
+              <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+                <span>In / Out</span>
+                <select class="cell-input" id="txnFilterDirection" style="width:auto;font-size:10px;padding:2px 4px;font-weight:400;text-transform:none;letter-spacing:normal;">
+                  <option value="">All</option>
+                  <option value="in">In</option>
+                  <option value="out">Out</option>
+                </select>
+              </div>
+            </th>
             <th>Amount</th>
             <th></th>
           </tr>
