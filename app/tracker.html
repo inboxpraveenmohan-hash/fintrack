@@ -206,10 +206,13 @@
     #txnTable{display:none;}
     .txn-cards{display:block;}
     #txnFilterCategoryM,#txnFilterAccountM,#txnFilterDirectionM,#txnFilterDateFromM,#txnFilterDateToM{display:inline-block;}
-    /* Compact controls: full-width search, then paired-up selects/inputs wrapping one row at a
-       time — Sort+Category, Account+In/Out, then the From/To date range — Clear Month behind ⋯ */
+    /* Compact controls: search shares its row with the icon-only Starred toggle, then
+       paired-up selects/inputs wrap one row at a time — Sort+Category, Account+In/Out, then
+       the From/To date range — Clear Month behind ⋯ */
     #txnControls{width:100%;gap:8px;}
-    #txnSearch{flex:1 1 100%;width:auto;}
+    #txnSearch{flex:1 1 auto;width:auto;min-width:0;}
+    #btnStarred{flex:0 0 auto;padding:9px 12px;}
+    #btnStarred .starred-label{display:none;}
     /* flex-basis 140px (not 0) is load-bearing: it's what makes wrapping happen at all. At
        basis 0 + min-width:0 (the old rule), flexbox just shrinks all six controls to fit one
        unreadable row instead of wrapping — wrapping only kicks in once items refuse to shrink
@@ -287,7 +290,6 @@
     </div>
 
     <button class="btn accent" id="btnOverview">Overview</button>
-    <button class="btn" id="btnStarred" title="Show every starred transaction, across all months">★ Starred</button>
     <div class="month-switch">
       <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
       <span id="monthLabel"></span>
@@ -371,6 +373,7 @@
       <h2>Transaction Log</h2>
       <div id="txnControls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <input class="cell-input" style="width:160px;" id="txnSearch" placeholder="Search transactions…">
+        <button class="btn" id="btnStarred" title="Show every starred transaction, across all months">★<span class="starred-label"> Starred</span></button>
         <select class="cell-input" id="txnSortOrder" style="width:auto;">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
