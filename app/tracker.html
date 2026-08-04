@@ -61,12 +61,22 @@
   .txn-cards{display:none;}
   .txn-card{border-bottom:1px solid var(--row-line);padding:10px 14px;cursor:pointer;}
   .txn-card:last-child{border-bottom:none;}
-  .txn-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;}
-  .txn-item-label{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* space-between (rather than justify-content) is why the star toggle needed dropping — with
+     a 3rd child, it split evenly-spaced gaps between all three instead of hugging the label to
+     the star and pushing only the amount to the far edge, so the label now flex-grows instead. */
+  .txn-top{display:flex;gap:8px;align-items:baseline;}
+  .txn-item-label{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .txn-amt{font-size:13px;font-weight:700;flex-shrink:0;}
   .txn-amt.out{color:var(--red);}
   .txn-amt.in{color:var(--green);}
   .txn-meta{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;}
+  /* Star toggle — reuses .icon-btn's base (sizing/hover shape) but swaps the destructive
+     red hover for gold, since starring isn't a destructive action, and turns solid gold once
+     starred so it reads at a glance without needing to hover/tap. */
+  .star-btn{font-size:14px;}
+  .star-btn.starred{color:var(--amber);}
+  .star-btn:hover{background:var(--amber-bg);color:var(--amber);}
+  .txn-top .star-btn{flex-shrink:0;padding:2px 4px 2px 0;}
   .tchip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--row-tint);border:1px solid var(--border);color:var(--muted);}
   .tchip.cat{background:var(--primary-light);color:var(--primary);border-color:transparent;}
   .tchip.dir-out{background:var(--red-bg);color:var(--red);border-color:transparent;}
@@ -277,6 +287,7 @@
     </div>
 
     <button class="btn accent" id="btnOverview">Overview</button>
+    <button class="btn" id="btnStarred" title="Show every starred transaction, across all months">★ Starred</button>
     <div class="month-switch">
       <button class="icon-btn" data-action="prev-month" title="Previous month">◀</button>
       <span id="monthLabel"></span>
@@ -390,6 +401,7 @@
       <table id="txnTable">
         <thead>
           <tr>
+            <th></th>
             <th class="left">
               <div style="display:flex;flex-direction:column;gap:3px;">
                 <span>Date</span>
@@ -492,6 +504,33 @@
     </div>
     <div class="modal-actions">
       <button class="btn" id="transfersClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="starredBackdrop">
+  <div class="modal scroll-modal" style="max-width:820px;">
+    <h3>Starred Transactions</h3>
+    <p>Every transaction you've starred, across all months — tap ★ to unstar.</p>
+    <div class="table-scroll">
+      <table id="starredTable">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="left">Date</th>
+            <th class="left">Item</th>
+            <th class="left">Category</th>
+            <th class="left">Account</th>
+            <th>In / Out</th>
+            <th>Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="starredBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="starredClose">Done</button>
     </div>
   </div>
 </div>

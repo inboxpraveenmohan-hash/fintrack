@@ -519,6 +519,33 @@
     document.getElementById("transferBody").innerHTML = rows;
   }
 
+  // Shows every starred transaction (not scoped to the selected month) — the whole point of
+  // starring something is finding it again regardless of which month you're currently viewing.
+  // Rows reuse the exact data-type="txn" convention the Transaction Log itself uses, so edits
+  // made here flow through the same delegated change handler with no extra wiring.
+  function renderStarredModal() {
+    const rows = tracker().transactions.filter((t) => t.starred)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+      .map((t) => {
+        const amtClass = t.direction === "in" ? "neg" : "pos";
+        return "<tr>" +
+          "<td>" + starBtnHtml(t) + "</td>" +
+          '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
+          '<td class="left"><input class="cell-input name-input" data-type="txn" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
+          '<td class="left"><select class="cell-input" style="width:170px;" data-type="txn" data-id="' + t.id + '" data-field="categoryId">' + categorySelectOptions(t.categoryId) + "</select></td>" +
+          '<td class="left"><select class="cell-input" style="width:110px;" data-type="txn" data-id="' + t.id + '" data-field="accountId">' + acctOptions(t.accountId) + "</select></td>" +
+          '<td><select class="cell-input" style="width:auto;" data-type="txn" data-id="' + t.id + '" data-field="direction">' +
+          '<option value="out"' + (t.direction === "out" ? " selected" : "") + ">Out</option>" +
+          '<option value="in"' + (t.direction === "in" ? " selected" : "") + ">In</option>" +
+          "</select></td>" +
+          '<td class="' + amtClass + '"><input class="cell-input amount" type="number" step="0.01" data-type="txn" data-id="' + t.id + '" data-field="amount" value="' + numOr0(t.amount) + '"></td>' +
+          '<td><button class="icon-btn" data-action="delete-txn" data-id="' + t.id + '" title="Delete transaction">✕</button></td>' +
+          "</tr>";
+      }).join("");
+    document.getElementById("starredBody").innerHTML =
+      rows || '<tr><td colspan="8" class="empty-msg">No starred transactions yet — tap ☆ on any transaction in the log to star it.</td></tr>';
+  }
+
   function customizeStatBtn(target, label) {
     return '<button class="icon-btn" data-action="open-chart-customize" data-target="' + target + '" title="Choose which categories count toward ' + label + '">⚙</button>';
   }
@@ -880,6 +907,13 @@
     return !!top && top.id === filterId;
   }
 
+  // Shared between the Transaction Log (desktop table + mobile cards) and the Starred
+  // Transactions modal, so the toggle looks and behaves identically everywhere it appears.
+  function starBtnHtml(t) {
+    const starred = !!t.starred;
+    return '<button class="icon-btn star-btn' + (starred ? " starred" : "") + '" data-action="toggle-star" data-id="' + t.id + '" title="' + (starred ? "Unstar this transaction" : "Star this transaction") + '">' + (starred ? "★" : "☆") + "</button>";
+  }
+
   function renderTransactions(d) {
     let rows = d.monthTxns.slice().sort((a, b) => {
       if (a.date === b.date) return 0;
@@ -899,6 +933,7 @@
     const rowsHtml = rows.map((t) => {
       const amtClass = t.direction === "in" ? "neg" : "pos";
       return "<tr>" +
+        "<td>" + starBtnHtml(t) + "</td>" +
         '<td class="left"><input class="cell-input name-input" type="date" style="width:130px;" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></td>' +
         '<td class="left"><input class="cell-input name-input" data-type="txn" data-id="' + t.id + '" data-field="item" value="' + escapeAttr(t.item) + '"></td>' +
         '<td class="left"><select class="cell-input" style="width:170px;" data-type="txn" data-id="' + t.id + '" data-field="categoryId">' + categorySelectOptions(t.categoryId) + "</select></td>" +
@@ -915,7 +950,7 @@
     const anyFilterActive = searchQuery || filterCategoryId || filterAccountId || filterDirection || filterDateFrom || filterDateTo;
     const emptyMsg = "No transactions " + (anyFilterActive ? "match your search/filter" : "this month") + ".";
     document.getElementById("txnBody").innerHTML =
-      rowsHtml || ('<tr><td colspan="7" class="empty-msg">' + emptyMsg + "</td></tr>");
+      rowsHtml || ('<tr><td colspan="8" class="empty-msg">' + emptyMsg + "</td></tr>");
 
     // Mobile card rendering of the same rows — hidden on desktop (and vice versa) purely via
     // CSS, so both are always in the DOM. The card inputs reuse the exact data-type/data-id/
@@ -952,7 +987,7 @@
       const acct = findAccount(t.accountId);
       const isIn = t.direction === "in";
       cardsHtml += '<div class="txn-card' + (t.id === expandedTxnCardId ? " expanded" : "") + '" data-txn-card="' + t.id + '">' +
-        '<div class="txn-top"><span class="txn-item-label">' + escapeHtml(t.item) + '</span><span class="txn-amt ' + (isIn ? "in" : "out") + '">' + (isIn ? "+" : "−") + fmtINR(t.amount) + "</span></div>" +
+        '<div class="txn-top">' + starBtnHtml(t) + '<span class="txn-item-label">' + escapeHtml(t.item) + '</span><span class="txn-amt ' + (isIn ? "in" : "out") + '">' + (isIn ? "+" : "−") + fmtINR(t.amount) + "</span></div>" +
         '<div class="txn-meta"><span class="tchip cat">' + escapeHtml(cat ? cat.name : "?") + '</span><span class="tchip">' + escapeHtml(acct ? acct.name : "?") + '</span><span class="tchip ' + (isIn ? "dir-in" : "dir-out") + '">' + (isIn ? "In" : "Out") + "</span></div>" +
         '<div class="txn-edit"><div class="field-grid">' +
         '<div class="field"><label>Date</label><input type="date" data-type="txn" data-id="' + t.id + '" data-field="date" value="' + t.date + '"></div>' +
@@ -1637,6 +1672,14 @@
       document.getElementById("transfersBackdrop").classList.remove("show");
     });
 
+    document.getElementById("btnStarred").addEventListener("click", () => {
+      renderStarredModal();
+      document.getElementById("starredBackdrop").classList.add("show");
+    });
+    document.getElementById("starredClose").addEventListener("click", () => {
+      document.getElementById("starredBackdrop").classList.remove("show");
+    });
+
     document.getElementById("btnOverview").addEventListener("click", () => {
       renderOverview();
       document.getElementById("overviewBackdrop").classList.add("show");
@@ -1810,6 +1853,7 @@
         tx[field] = val;
         persist();
         renderAll();
+        if (document.getElementById("starredBackdrop").classList.contains("show")) renderStarredModal();
       } else if (type === "transfer") {
         const tr = tracker().transfers.find((x) => x.id === id);
         if (!tr) return;
@@ -1928,12 +1972,22 @@
         }
         return;
       }
+      if (action === "toggle-star") {
+        const tx = tracker().transactions.find((t) => t.id === actionEl.dataset.id);
+        if (!tx) return;
+        tx.starred = !tx.starred;
+        persist();
+        renderAll();
+        if (document.getElementById("starredBackdrop").classList.contains("show")) renderStarredModal();
+        return;
+      }
       if (action === "delete-txn") {
         const ok = await confirmDialog("Delete transaction?", "This removes the transaction.", "Delete", "Cancel", true);
         if (!ok) return;
         tracker().transactions = tracker().transactions.filter((t) => t.id !== actionEl.dataset.id);
         persist();
         renderAll();
+        if (document.getElementById("starredBackdrop").classList.contains("show")) renderStarredModal();
         return;
       }
 
